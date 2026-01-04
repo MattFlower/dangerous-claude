@@ -1,0 +1,3 @@
+# User-customizable config files (use .example versions as templates)
+packages.apt
+sdkman.txt

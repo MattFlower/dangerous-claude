@@ -15,7 +15,7 @@ Claude Code's `--dangerously-skip-permissions` flag lets Claude execute commands
 - **Auto-updates**: Claude Code updates to the latest version on each container start
 - **Multiple repos**: Mount as many source directories as needed
 - **Conversation persistence**: Continue or resume previous conversations
-- **Development tools included**: Java 21, Gradle, Maven, Node.js 20, ripgrep, fd, jq, git
+- **Customizable tools**: Choose which languages and tools to install (Java, Python, Ruby, Rust, etc.)
 
 ## Prerequisites
 
@@ -100,24 +100,42 @@ These are automatically passed to the container if set:
 
 ### Installed Tools
 
-| Tool | Version | Notes |
-|------|---------|-------|
-| Java | 21 (Temurin) | Via SDKMAN |
-| Gradle | Latest | Via SDKMAN |
-| Maven | Latest | Via SDKMAN |
-| Node.js | 20.x LTS | For Claude Code |
-| ripgrep | Latest | Fast code search |
-| fd | Latest | Fast file finder |
-| jq | Latest | JSON processing |
-| git | Latest | Version control |
+**Always installed** (required for core functionality):
+- Node.js 20.x, git, curl, wget, ripgrep, fd, jq
 
-### Customization
+**Default extras** (from example configs):
+- Java 21 (Temurin), Gradle, Maven
+- vim, nano, python3, build-essential
 
-Edit the `Dockerfile` to add tools, then rebuild:
+### Customizing Installed Packages
+
+The Docker image is customizable via two config files:
+
+| File | Purpose | Example |
+|------|---------|---------|
+| `packages.apt` | apt packages | vim, python3, ruby |
+| `sdkman.txt` | SDKMAN tools | java:21.0.2-tem, kotlin, scala |
+
+On first build, these are created from `.example` files. To customize:
 
 ```bash
+# Edit the config files
+nano ~/.dangerous-claude/packages.apt
+nano ~/.dangerous-claude/sdkman.txt
+
+# Rebuild with your changes
 dangerous-claude build
 ```
+
+**For a minimal image** (no Java/Python/etc):
+```bash
+# Create empty config files
+echo "" > ~/.dangerous-claude/packages.apt
+echo "" > ~/.dangerous-claude/sdkman.txt
+dangerous-claude build
+```
+
+Your customizations are gitignored, so `git pull` won't overwrite them.
 
 ## Git Worktrees
 

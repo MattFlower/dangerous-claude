@@ -93,9 +93,33 @@ done
 # Create state directory if it doesn't exist
 mkdir -p "$CLAUDE_STATE_DIR"
 
+# Prepare config files for build (copy from .example if not present)
+prepare_config_files() {
+  # packages.apt - apt packages to install
+  if [ ! -f "$SCRIPT_DIR/packages.apt" ]; then
+    if [ -f "$SCRIPT_DIR/packages.apt.example" ]; then
+      cp "$SCRIPT_DIR/packages.apt.example" "$SCRIPT_DIR/packages.apt"
+      echo "Created packages.apt from packages.apt.example"
+    else
+      touch "$SCRIPT_DIR/packages.apt"
+    fi
+  fi
+
+  # sdkman.txt - SDKMAN tools to install
+  if [ ! -f "$SCRIPT_DIR/sdkman.txt" ]; then
+    if [ -f "$SCRIPT_DIR/sdkman.txt.example" ]; then
+      cp "$SCRIPT_DIR/sdkman.txt.example" "$SCRIPT_DIR/sdkman.txt"
+      echo "Created sdkman.txt from sdkman.txt.example"
+    else
+      touch "$SCRIPT_DIR/sdkman.txt"
+    fi
+  fi
+}
+
 # Build image if it doesn't exist or if forced
 if [ "$FORCE_BUILD" = true ] || ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
   echo "Building Docker image..."
+  prepare_config_files
   docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
   echo ""
 fi

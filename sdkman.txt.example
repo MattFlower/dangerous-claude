@@ -1,0 +1,21 @@
+# SDKMAN tools to install
+# Format: tool_name or tool_name:version
+# Lines starting with # are comments.
+#
+# These are installed during 'dangerous-claude build'
+# Copy this file to 'sdkman.txt' and customize as needed.
+#
+# Available tools: https://sdkman.io/sdks
+# Examples:
+#   java:21.0.2-tem    (specific version)
+#   java               (latest version)
+#   kotlin
+#   scala
+#   groovy
+
+# Java 21 (Temurin/Eclipse Adoptium)
+java:21.0.2-tem
+
+# Build tools
+gradle
+maven
