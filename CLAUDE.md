@@ -24,7 +24,7 @@ dangerous-claude (CLI)
     │           ~/.gitconfig (read-only)
     │           ~/.gradle (for Java projects)
     │
-    └── Passes: ANTHROPIC_API_KEY, ARTIFACTORY_* env vars
+    └── Passes: ANTHROPIC_API_KEY + env vars listed in env.txt
 
 Dockerfile
     │
@@ -52,6 +52,7 @@ entrypoint.sh
 | `install.sh` | First-time installation script |
 | `packages.apt` | User-customizable apt packages (gitignored) |
 | `sdkman.txt` | User-customizable SDKMAN tools (gitignored) |
+| `env.txt` | User-customizable env vars to pass (gitignored) |
 | `*.example` | Templates for user config files |
 
 ## Build & Run
@@ -82,11 +83,15 @@ dangerous-claude --login
 2. Edit `sdkman.txt` to add/remove SDKMAN tools (format: `tool` or `tool:version`)
 3. Rebuild with `dangerous-claude --build`
 
+## Passing Environment Variables
+
+Edit `env.txt` to list environment variable names to pass into the container (one per line). Only variables that are set in your shell will be passed. No rebuild required.
+
 ## Code Conventions
 
 - Bash scripts use 2-space indentation
 - Config files auto-generated from `.example` templates on first run
-- User customizations (packages.apt, sdkman.txt) are gitignored
+- User customizations (packages.apt, sdkman.txt, env.txt) are gitignored
 - Volume mounts built as bash arrays and expanded with `"${ARRAY[@]}"`
 
 ## Common Development Tasks

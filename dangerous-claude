@@ -199,10 +199,26 @@ ENV_ARGS=(
   "-e" "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
 )
 
-# Pass Artifactory credentials if available
-[ -n "$ARTIFACTORY_USERNAME" ] && ENV_ARGS+=("-e" "ARTIFACTORY_USERNAME=$ARTIFACTORY_USERNAME")
-[ -n "$ARTIFACTORY_PASSWORD" ] && ENV_ARGS+=("-e" "ARTIFACTORY_PASSWORD=$ARTIFACTORY_PASSWORD")
-[ -n "$ARTIFACTORY_TOKEN" ] && ENV_ARGS+=("-e" "ARTIFACTORY_TOKEN=$ARTIFACTORY_TOKEN")
+# Prepare env.txt from example if not present
+if [ ! -f "$SCRIPT_DIR/env.txt" ]; then
+  if [ -f "$SCRIPT_DIR/env.txt.example" ]; then
+    cp "$SCRIPT_DIR/env.txt.example" "$SCRIPT_DIR/env.txt"
+  else
+    touch "$SCRIPT_DIR/env.txt"
+  fi
+fi
+
+# Pass environment variables listed in env.txt
+if [ -f "$SCRIPT_DIR/env.txt" ]; then
+  while IFS= read -r var_name || [ -n "$var_name" ]; do
+    # Skip comments and empty lines
+    [[ "$var_name" =~ ^#.*$ || -z "$var_name" ]] && continue
+    # Only pass if the variable is set in the environment
+    if [ -n "${!var_name}" ]; then
+      ENV_ARGS+=("-e" "$var_name=${!var_name}")
+    fi
+  done < "$SCRIPT_DIR/env.txt"
+fi
 
 if [ -n "$CONTINUE_FLAG" ]; then
   ENV_ARGS+=("-e" "CLAUDE_CONTINUE=true")
