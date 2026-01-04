@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-01-04
+
+### Added
+
+- **`--init` flag**: Smart image acquisition that pulls from ghcr.io unless config files are customized
+- Installer now uses `--init` for faster first-time setup
+
+### Changed
+
+- Commands now consistently use `--` prefix (`--build`, `--shell`, `--login`, etc.)
+- Installer adds PATH to both `.bashrc` and `.zshrc` if they exist (previously only one)
+
+### Fixed
+
+- Installation no longer forces a local build when pre-built image is available
+
 ## [1.0.0] - 2026-01-04
 
 ### Added
@@ -29,4 +45,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Only explicitly mounted directories are accessible
 - Host git config mounted read-only
 
+[1.1.0]: https://github.com/MattFlower/dangerous-claude/releases/tag/v1.1.0
 [1.0.0]: https://github.com/MattFlower/dangerous-claude/releases/tag/v1.0.0
