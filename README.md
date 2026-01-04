@@ -172,6 +172,15 @@ Try rebuilding: `dangerous-claude build`
 
 If you're logged in on your host but the container asks for auth, make sure `~/.claude.json` exists and contains `hasCompletedOnboarding: true`.
 
+## Contributing
+
+Contributions are welcome! If you have ideas for improvements or find bugs, please open an issue or submit a pull request on [GitHub](https://github.com/MattFlower/dangerous-claude).
+
+Some areas where help would be appreciated:
+- Support for additional development tools and languages
+- Improved documentation
+- Bug fixes and edge case handling
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
