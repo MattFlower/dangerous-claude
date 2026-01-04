@@ -64,6 +64,7 @@ The Docker image is hosted on GitHub Container Registry at `ghcr.io/mattflower/d
 - If `packages.apt` or `sdkman.txt` differ from their `.example` files → build locally
 - Otherwise → pull pre-built image from ghcr.io
 - Use `--build` to force a local build
+- Use `--init` to pull or build as appropriate (used by installer)
 
 The GitHub Actions workflow automatically rebuilds and pushes the image when Dockerfile, entrypoint.sh, or example files change.
 

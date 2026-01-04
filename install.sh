@@ -59,10 +59,10 @@ if [ "$UPDATED" = false ]; then
   add_to_path "$HOME/.profile"
 fi
 
-# Build Docker image
+# Pull or build Docker image
 echo ""
-echo "Building Docker image (this may take a few minutes on first run)..."
-"$INSTALL_DIR/dangerous-claude" build
+echo "Setting up Docker image..."
+"$INSTALL_DIR/dangerous-claude" --init
 
 echo ""
 echo "Installation complete!"

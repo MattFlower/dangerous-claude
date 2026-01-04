@@ -8,7 +8,8 @@
 # Options:
 #   --continue, -c      Continue the most recent conversation
 #   --resume, -r ID     Resume a specific conversation by ID
-#   --build             Force rebuild the Docker image
+#   --build             Force rebuild the Docker image locally
+#   --init              Pull image (or build if customized)
 #   --shell             Start a bash shell instead of Claude
 #   --login             Run 'claude login' for Claude Max authentication
 #   --help, -h          Show this help message
@@ -43,6 +44,7 @@ DIRECTORIES=()
 CONTINUE_FLAG=""
 RESUME_ID=""
 FORCE_BUILD=false
+INIT_IMAGE=false
 START_SHELL=false
 RUN_LOGIN=false
 
@@ -63,6 +65,10 @@ while [[ $# -gt 0 ]]; do
     ;;
   --build | build)
     FORCE_BUILD=true
+    shift
+    ;;
+  --init)
+    INIT_IMAGE=true
     shift
     ;;
   --shell | shell)
@@ -160,6 +166,16 @@ pull_image() {
 if [ "$FORCE_BUILD" = true ]; then
   build_image
   echo "Docker image built successfully."
+  exit 0
+elif [ "$INIT_IMAGE" = true ]; then
+  # Smart pull-or-build: pull unless customized
+  if is_customized; then
+    echo "Custom configuration detected."
+    build_image
+  else
+    pull_image
+  fi
+  echo "Docker image ready."
   exit 0
 elif ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
   # Image doesn't exist locally

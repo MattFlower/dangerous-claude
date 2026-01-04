@@ -38,7 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/MattFlower/dangerous-claude/main/in
 git clone https://github.com/MattFlower/dangerous-claude.git ~/.dangerous-claude
 echo 'export PATH="$PATH:$HOME/.dangerous-claude"' >> ~/.zshrc  # or ~/.bashrc
 source ~/.zshrc
-dangerous-claude build
+dangerous-claude --build
 ```
 
 ## Usage
@@ -62,10 +62,11 @@ dangerous-claude --resume abc123 ./repo
 ### Other Commands
 
 ```bash
-dangerous-claude build      # Rebuild the Docker image
-dangerous-claude shell      # Start a bash shell (for debugging)
-dangerous-claude version    # Show version
-dangerous-claude help       # Show help
+dangerous-claude --build    # Force rebuild the Docker image locally
+dangerous-claude --init     # Pull image (or build if customized)
+dangerous-claude --shell    # Start a bash shell (for debugging)
+dangerous-claude --version  # Show version
+dangerous-claude --help     # Show help
 ```
 
 ## dangerous-claude isn't perfect -- know what it doesn't protect
@@ -89,7 +90,7 @@ An alternate workflow would be to do your commits outside of dangerous-claude.  
 ## Updating
 
 ```bash
-cd ~/.dangerous-claude && git pull && ./dangerous-claude build
+cd ~/.dangerous-claude && git pull && ./dangerous-claude --build
 ```
 
 Or re-run the installer:
@@ -151,7 +152,7 @@ nano ~/.dangerous-claude/sdkman.txt
 nano ~/.dangerous-claude/env.txt
 
 # Rebuild with your changes (only needed for packages.apt and sdkman.txt)
-dangerous-claude build
+dangerous-claude --build
 ```
 
 **For a minimal image** (no Java/Python/etc):
@@ -160,7 +161,7 @@ dangerous-claude build
 # Create empty config files
 echo "" > ~/.dangerous-claude/packages.apt
 echo "" > ~/.dangerous-claude/sdkman.txt
-dangerous-claude build
+dangerous-claude --build
 ```
 
 Your customizations are gitignored, so `git pull` won't overwrite them.
@@ -173,7 +174,7 @@ The container runs as a non-root user. Ensure your mounted directories are reada
 
 ### Container won't start
 
-Try rebuilding: `dangerous-claude build`
+Try rebuilding: `dangerous-claude --build`
 
 ### Authentication issues
 
