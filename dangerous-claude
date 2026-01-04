@@ -122,6 +122,11 @@ if [ "$FORCE_BUILD" = true ] || ! docker image inspect "$IMAGE_NAME" &>/dev/null
   prepare_config_files
   docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
   echo ""
+  # If build was explicitly requested, exit after building
+  if [ "$FORCE_BUILD" = true ]; then
+    echo "Docker image built successfully."
+    exit 0
+  fi
 fi
 
 # Build volume mounts
