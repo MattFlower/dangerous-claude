@@ -46,10 +46,10 @@ dangerous-claude build
 ### Basic Usage
 
 ```bash
-# Run with one or more repositories
+# Run claude dangerously, allowing it access to repo1, repo2, and repo3
 dangerous-claude ./repo1 ./repo2 ./repo3
 
-# Run with current directory
+# Run claude dangerously, allowing it access to the current directory
 dangerous-claude
 
 # Continue the most recent conversation
@@ -67,6 +67,24 @@ dangerous-claude shell      # Start a bash shell (for debugging)
 dangerous-claude version    # Show version
 dangerous-claude help       # Show help
 ```
+
+## dangerous-claude isn't perfect -- know what it doesn't protect
+
+While this sandbox isolates Claude from most of your system:
+
+- **Mounted directories** are fully accessible (read/write).  Claude could potentially delete any or all of these directories, potentially causing the loss of any local branches.  If you wanted to be extra safe, clone a separate copy of any repository you are feeding to dangerous claude!
+- **Network access** is available (for npm, API calls, etc.)  If you provide environment variables that allow dangerous-claude to modify remote resources, it definitely could!
+- **~/.claude config** is shared with the host.  Assume that you could lose your ~/.claude or ~/.claude.json file could be deleted.
+
+For maximum security, only mount the specific directories you need.  
+
+## Git worktrees
+
+I like and use git worktrees pretty liberally as I'm working on projects at work.  Committing, pulling, pushing, or using logs requires access to the "main" directory that has the repository.  Things like committing requires that directory to be read-write.  
+
+Consequently, if you are going to use git worktrees with Claude, you have to mount your main directory too!  This can be dangerous if you have multiple active branches.  Consequently, by default dangerous-claude will warn you if you try to do it.
+
+An alternate workflow would be to do your commits outside of dangerous-claude.  This is acceptable for small changes (and I use it).  If you are going to make larger changes, I recommend creating a separate copy of your repo -- it greatly reduces the chance that Claude will erase anything.
 
 ## Updating
 
@@ -147,22 +165,6 @@ dangerous-claude build
 
 Your customizations are gitignored, so `git pull` won't overwrite them.
 
-## Git Worktrees
-
-If you mount a git worktree, you'll see a warning that commits won't work. This is because worktrees require access to the parent repository's `.git` directory, which isn't mounted for security reasons.
-
-To make commits, mount the main repository instead of the worktree.
-
-## Security Notes
-
-While this sandbox isolates Claude from most of your system:
-
-- **Mounted directories** are fully accessible (read/write)
-- **Network access** is available (for npm, API calls, etc.)
-- **~/.claude config** is shared with the host
-
-For maximum security, only mount the specific directories you need.
-
 ## Troubleshooting
 
 ### "Permission denied" errors
@@ -182,6 +184,7 @@ If you're logged in on your host but the container asks for auth, make sure `~/.
 Contributions are welcome! If you have ideas for improvements or find bugs, please open an issue or submit a pull request on [GitHub](https://github.com/MattFlower/dangerous-claude).
 
 Some areas where help would be appreciated:
+
 - Support for additional development tools and languages
 - Improved documentation
 - Bug fixes and edge case handling
