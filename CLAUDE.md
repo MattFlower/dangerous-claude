@@ -17,7 +17,7 @@ This project wraps Claude Code in a Docker container so users can run it with fu
 ```
 dangerous-claude (CLI)
     │
-    ├── Builds/runs Docker container (claude-sandbox)
+    ├── Builds/runs Docker container (dangerous-claude)
     │
     ├── Mounts: source dirs → /workspace/*
     │           ~/.claude → /mnt/claude-data

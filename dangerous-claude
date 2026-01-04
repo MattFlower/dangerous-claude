@@ -29,8 +29,8 @@ set -e
 VERSION="1.0.0"
 
 # Configuration
-IMAGE_NAME="claude-sandbox"
-CONTAINER_NAME="claude-sandbox-$$"
+IMAGE_NAME="dangerous-claude"
+CONTAINER_NAME="dangerous-claude-$$"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # State directory for persisting Claude conversations
