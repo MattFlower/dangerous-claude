@@ -6,18 +6,24 @@
 
 set -e
 
-INSTALL_DIR="$HOME/.dangerous-claude"
-REPO_URL="https://github.com/MattFlower/dangerous-claude.git"
-
-echo "Installing dangerous-claude..."
-echo ""
-
-# Check for Docker
+# Check for Docker first (before doing anything else)
 if ! command -v docker &>/dev/null; then
   echo "Error: Docker is required but not installed."
   echo "Please install Docker first: https://docs.docker.com/get-docker/"
   exit 1
 fi
+
+if ! docker info &>/dev/null; then
+  echo "Error: Docker is installed but not running."
+  echo "Please start Docker and try again."
+  exit 1
+fi
+
+INSTALL_DIR="$HOME/.dangerous-claude"
+REPO_URL="https://github.com/MattFlower/dangerous-claude.git"
+
+echo "Installing dangerous-claude..."
+echo ""
 
 # Clone or update
 if [ -d "$INSTALL_DIR" ]; then
