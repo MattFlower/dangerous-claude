@@ -1,0 +1,203 @@
+#!/bin/bash
+#
+# dangerous-claude - Run Claude Code in a sandboxed Docker container
+#
+# Usage:
+#   dangerous-claude [OPTIONS] [DIRECTORIES...]
+#
+# Options:
+#   --continue, -c      Continue the most recent conversation
+#   --resume, -r ID     Resume a specific conversation by ID
+#   --build             Force rebuild the Docker image
+#   --shell             Start a bash shell instead of Claude
+#   --login             Run 'claude login' for Claude Max authentication
+#   --help, -h          Show this help message
+#
+# Authentication:
+#   - Claude Max: If logged in on host, it just works (shares ~/.claude)
+#   - API Key: Set ANTHROPIC_API_KEY environment variable
+#
+# Examples:
+#   dangerous-claude --login                    # First time: authenticate
+#   dangerous-claude ./repo1 ./repo2
+#   dangerous-claude --continue ./repo1
+#   dangerous-claude --resume abc123 ./repo1 ./repo2 ./repo3
+#
+
+set -e
+
+VERSION="1.0.0"
+
+# Configuration
+IMAGE_NAME="claude-sandbox"
+CONTAINER_NAME="claude-sandbox-$$"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# State directory for persisting Claude conversations
+# Shares with host's ~/.claude by default for plugin/MCP compatibility
+CLAUDE_STATE_DIR="${CLAUDE_STATE_DIR:-$HOME/.claude}"
+
+# Parse arguments
+DIRECTORIES=()
+CONTINUE_FLAG=""
+RESUME_ID=""
+FORCE_BUILD=false
+START_SHELL=false
+RUN_LOGIN=false
+
+show_help() {
+  sed -n '2,25p' "$0" | sed 's/^#//' | sed 's/^ //'
+  exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  --continue | -c)
+    CONTINUE_FLAG="true"
+    shift
+    ;;
+  --resume | -r)
+    RESUME_ID="$2"
+    shift 2
+    ;;
+  --build | build)
+    FORCE_BUILD=true
+    shift
+    ;;
+  --shell | shell)
+    START_SHELL=true
+    shift
+    ;;
+  --login | login)
+    RUN_LOGIN=true
+    shift
+    ;;
+  --help | -h | help)
+    show_help
+    ;;
+  --version | version)
+    echo "dangerous-claude $VERSION"
+    exit 0
+    ;;
+  -*)
+    echo "Unknown option: $1"
+    exit 1
+    ;;
+  *)
+    DIRECTORIES+=("$1")
+    shift
+    ;;
+  esac
+done
+
+# Create state directory if it doesn't exist
+mkdir -p "$CLAUDE_STATE_DIR"
+
+# Build image if it doesn't exist or if forced
+if [ "$FORCE_BUILD" = true ] || ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
+  echo "Building Docker image..."
+  docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
+  echo ""
+fi
+
+# Build volume mounts
+VOLUME_ARGS=()
+
+# Mount Claude state for conversation persistence (symlinked to ~/.claude at runtime)
+VOLUME_ARGS+=("-v" "$CLAUDE_STATE_DIR:/mnt/claude-data")
+
+# Mount ~/.claude.json (contains hasCompletedOnboarding and other essential state)
+CLAUDE_JSON="$HOME/.claude.json"
+if [ -f "$CLAUDE_JSON" ]; then
+  VOLUME_ARGS+=("-v" "$CLAUDE_JSON:/home/claude/.claude.json")
+fi
+
+# Mount git config so commits appear as the user
+if [ -f "$HOME/.gitconfig" ]; then
+  VOLUME_ARGS+=("-v" "$HOME/.gitconfig:/home/claude/.gitconfig:ro")
+fi
+
+# Mount Gradle directory for shared caches and configs
+if [ -d "$HOME/.gradle" ]; then
+  VOLUME_ARGS+=("-v" "$HOME/.gradle:/home/claude/.gradle")
+fi
+
+# Function to check if a directory is a git worktree
+is_git_worktree() {
+  local dir="$1"
+  local git_file="$dir/.git"
+  # Worktrees have a .git file (not directory) containing "gitdir: ..."
+  [ -f "$git_file" ] && grep -q "^gitdir:" "$git_file" 2>/dev/null
+}
+
+# Mount each directory
+for dir in "${DIRECTORIES[@]}"; do
+  # Get absolute path
+  abs_path="$(cd "$dir" 2>/dev/null && pwd)" || {
+    echo "Error: Directory not found: $dir"
+    exit 1
+  }
+
+  # Use the directory name as the mount point
+  dir_name="$(basename "$abs_path")"
+
+  VOLUME_ARGS+=("-v" "$abs_path:/workspace/$dir_name")
+  echo "Mounting: $abs_path -> /workspace/$dir_name"
+
+  # Warn if this is a git worktree
+  if is_git_worktree "$abs_path"; then
+    echo ""
+    echo "  WARNING: This is a git worktree."
+    echo "  Git commits will NOT work without access to the parent repository."
+    echo "  File reading and editing will work normally."
+    echo "  To enable commits, mount the main repository instead."
+    echo ""
+  fi
+done
+
+# If no directories specified, mount current directory
+if [ ${#DIRECTORIES[@]} -eq 0 ]; then
+  abs_path="$(pwd)"
+  dir_name="$(basename "$abs_path")"
+  VOLUME_ARGS+=("-v" "$abs_path:/workspace/$dir_name")
+  echo "Mounting current directory: $abs_path -> /workspace/$dir_name"
+fi
+
+echo ""
+
+# Build environment variables
+ENV_ARGS=(
+  "-e" "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
+)
+
+# Pass Artifactory credentials if available
+[ -n "$ARTIFACTORY_USERNAME" ] && ENV_ARGS+=("-e" "ARTIFACTORY_USERNAME=$ARTIFACTORY_USERNAME")
+[ -n "$ARTIFACTORY_PASSWORD" ] && ENV_ARGS+=("-e" "ARTIFACTORY_PASSWORD=$ARTIFACTORY_PASSWORD")
+[ -n "$ARTIFACTORY_TOKEN" ] && ENV_ARGS+=("-e" "ARTIFACTORY_TOKEN=$ARTIFACTORY_TOKEN")
+
+if [ -n "$CONTINUE_FLAG" ]; then
+  ENV_ARGS+=("-e" "CLAUDE_CONTINUE=true")
+fi
+
+if [ -n "$RESUME_ID" ]; then
+  ENV_ARGS+=("-e" "CLAUDE_RESUME=$RESUME_ID")
+fi
+
+# Determine the command to run
+if [ "$RUN_LOGIN" = true ]; then
+  DOCKER_CMD="claude login"
+elif [ "$START_SHELL" = true ]; then
+  DOCKER_CMD="bash"
+else
+  DOCKER_CMD=""
+fi
+
+# Run the container
+exec docker run \
+  --rm \
+  -it \
+  --name "$CONTAINER_NAME" \
+  "${VOLUME_ARGS[@]}" \
+  "${ENV_ARGS[@]}" \
+  "$IMAGE_NAME" \
+  $DOCKER_CMD
