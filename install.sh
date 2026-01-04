@@ -34,21 +34,29 @@ else
   git clone "$REPO_URL" "$INSTALL_DIR"
 fi
 
-# Determine shell config file
-if [ -n "$ZSH_VERSION" ] || [ -f "$HOME/.zshrc" ]; then
-  SHELL_RC="$HOME/.zshrc"
-elif [ -f "$HOME/.bashrc" ]; then
-  SHELL_RC="$HOME/.bashrc"
-else
-  SHELL_RC="$HOME/.profile"
-fi
+# Add to PATH in a shell config file
+add_to_path() {
+  local rc_file="$1"
+  if ! grep -q 'dangerous-claude' "$rc_file" 2>/dev/null; then
+    echo "" >> "$rc_file"
+    echo '# dangerous-claude' >> "$rc_file"
+    echo 'export PATH="$PATH:$HOME/.dangerous-claude"' >> "$rc_file"
+    echo "Added to PATH in $rc_file"
+  fi
+}
 
-# Add to PATH if not already present
-if ! grep -q 'dangerous-claude' "$SHELL_RC" 2>/dev/null; then
-  echo "" >> "$SHELL_RC"
-  echo '# dangerous-claude' >> "$SHELL_RC"
-  echo 'export PATH="$PATH:$HOME/.dangerous-claude"' >> "$SHELL_RC"
-  echo "Added to PATH in $SHELL_RC"
+# Update .bashrc and .zshrc if they exist, otherwise fall back to .profile
+UPDATED=false
+if [ -f "$HOME/.bashrc" ]; then
+  add_to_path "$HOME/.bashrc"
+  UPDATED=true
+fi
+if [ -f "$HOME/.zshrc" ]; then
+  add_to_path "$HOME/.zshrc"
+  UPDATED=true
+fi
+if [ "$UPDATED" = false ]; then
+  add_to_path "$HOME/.profile"
 fi
 
 # Build Docker image
@@ -59,8 +67,4 @@ echo "Building Docker image (this may take a few minutes on first run)..."
 echo ""
 echo "Installation complete!"
 echo ""
-echo "To start using dangerous-claude, either:"
-echo "  1. Run: source $SHELL_RC"
-echo "  2. Open a new terminal"
-echo ""
-echo "Then run: dangerous-claude --help"
+echo "Open a new terminal, then run: dangerous-claude --help"
