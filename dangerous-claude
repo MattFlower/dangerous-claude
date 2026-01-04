@@ -30,6 +30,7 @@ VERSION="1.0.0"
 
 # Configuration
 IMAGE_NAME="dangerous-claude"
+REMOTE_IMAGE="ghcr.io/mattflower/dangerous-claude:latest"
 CONTAINER_NAME="dangerous-claude-$$"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -116,16 +117,57 @@ prepare_config_files() {
   fi
 }
 
-# Build image if it doesn't exist or if forced
-if [ "$FORCE_BUILD" = true ] || ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
+# Check if config files have been customized from the examples
+is_customized() {
+  # If packages.apt exists and differs from example, it's customized
+  if [ -f "$SCRIPT_DIR/packages.apt" ] && [ -f "$SCRIPT_DIR/packages.apt.example" ]; then
+    if ! diff -q "$SCRIPT_DIR/packages.apt" "$SCRIPT_DIR/packages.apt.example" &>/dev/null; then
+      return 0
+    fi
+  fi
+
+  # If sdkman.txt exists and differs from example, it's customized
+  if [ -f "$SCRIPT_DIR/sdkman.txt" ] && [ -f "$SCRIPT_DIR/sdkman.txt.example" ]; then
+    if ! diff -q "$SCRIPT_DIR/sdkman.txt" "$SCRIPT_DIR/sdkman.txt.example" &>/dev/null; then
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+# Build locally
+build_image() {
   echo "Building Docker image..."
   prepare_config_files
   docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
   echo ""
-  # If build was explicitly requested, exit after building
-  if [ "$FORCE_BUILD" = true ]; then
-    echo "Docker image built successfully."
-    exit 0
+}
+
+# Pull from GitHub Container Registry
+pull_image() {
+  echo "Pulling Docker image from GitHub Container Registry..."
+  if docker pull "$REMOTE_IMAGE"; then
+    docker tag "$REMOTE_IMAGE" "$IMAGE_NAME"
+    echo ""
+  else
+    echo "Failed to pull image, building locally instead..."
+    build_image
+  fi
+}
+
+# Acquire image: build or pull as appropriate
+if [ "$FORCE_BUILD" = true ]; then
+  build_image
+  echo "Docker image built successfully."
+  exit 0
+elif ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
+  # Image doesn't exist locally
+  if is_customized; then
+    echo "Custom configuration detected."
+    build_image
+  else
+    pull_image
   fi
 fi
 

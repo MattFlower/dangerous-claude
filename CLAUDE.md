@@ -17,7 +17,7 @@ This project wraps Claude Code in a Docker container so users can run it with fu
 ```
 dangerous-claude (CLI)
     │
-    ├── Builds/runs Docker container (dangerous-claude)
+    ├── Pulls pre-built image from ghcr.io (or builds locally if customized)
     │
     ├── Mounts: source dirs → /workspace/*
     │           ~/.claude → /mnt/claude-data
@@ -54,11 +54,23 @@ entrypoint.sh
 | `sdkman.txt` | User-customizable SDKMAN tools (gitignored) |
 | `env.txt` | User-customizable env vars to pass (gitignored) |
 | `*.example` | Templates for user config files |
+| `.github/workflows/docker-publish.yml` | GitHub Actions workflow to build/push image |
+
+## Docker Image
+
+The Docker image is hosted on GitHub Container Registry at `ghcr.io/mattflower/dangerous-claude:latest`.
+
+**Image acquisition logic:**
+- If `packages.apt` or `sdkman.txt` differ from their `.example` files → build locally
+- Otherwise → pull pre-built image from ghcr.io
+- Use `--build` to force a local build
+
+The GitHub Actions workflow automatically rebuilds and pushes the image when Dockerfile, entrypoint.sh, or example files change.
 
 ## Build & Run
 
 ```bash
-# Build/rebuild the Docker image
+# Force rebuild the Docker image locally
 dangerous-claude --build
 
 # Run with directories
