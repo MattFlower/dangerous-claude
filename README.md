@@ -91,14 +91,17 @@ curl -fsSL https://raw.githubusercontent.com/MattFlower/dangerous-claude/main/in
 
 ### Environment Variables
 
-These are automatically passed to the container if set:
+`ANTHROPIC_API_KEY` is always passed if set (for API authentication).
 
-| Variable | Purpose |
-|----------|---------|
-| `ANTHROPIC_API_KEY` | API authentication (if not using Claude Max) |
-| `ARTIFACTORY_USERNAME` | For corporate artifact repositories |
-| `ARTIFACTORY_PASSWORD` | For corporate artifact repositories |
-| `ARTIFACTORY_TOKEN` | For corporate artifact repositories |
+Additional environment variables can be passed by listing them in `env.txt` (one variable name per line). Only variables that are set in your shell will be passed. For example:
+
+```bash
+# ~/.dangerous-claude/env.txt
+GITHUB_TOKEN
+NPM_TOKEN
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+```
 
 ### Installed Tools
 
@@ -113,21 +116,23 @@ These are automatically passed to the container if set:
 
 ### Customizing Installed Packages
 
-The Docker image is customizable via two config files:
+The Docker image is customizable via config files:
 
-| File | Purpose | Example |
-|------|---------|---------|
-| `packages.apt` | apt packages | vim, python3, ruby |
-| `sdkman.txt` | SDKMAN tools | java:21.0.9-zulu, kotlin, scala |
+| File | Purpose | Example | Rebuild required? |
+|------|---------|---------|-------------------|
+| `packages.apt` | apt packages | vim, python3, ruby | Yes |
+| `sdkman.txt` | SDKMAN tools | java:21.0.9-zulu, kotlin, scala | Yes |
+| `env.txt` | Environment variables to pass | GITHUB_TOKEN, NPM_TOKEN | No |
 
-On first build, these are created from `.example` files. To customize:
+On first run, these are created from `.example` files. To customize:
 
 ```bash
 # Edit the config files
 nano ~/.dangerous-claude/packages.apt
 nano ~/.dangerous-claude/sdkman.txt
+nano ~/.dangerous-claude/env.txt
 
-# Rebuild with your changes
+# Rebuild with your changes (only needed for packages.apt and sdkman.txt)
 dangerous-claude build
 ```
 
