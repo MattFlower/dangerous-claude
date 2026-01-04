@@ -14,7 +14,7 @@
 #   groovy
 
 # Java 21 (Temurin/Eclipse Adoptium)
-java:21.0.2-tem
+java:21.0.9-zulu
 
 # Build tools
 gradle

@@ -101,10 +101,12 @@ These are automatically passed to the container if set:
 ### Installed Tools
 
 **Always installed** (required for core functionality):
+
 - Node.js 20.x, git, curl, wget, ripgrep, fd, jq
 
 **Default extras** (from example configs):
-- Java 21 (Temurin), Gradle, Maven
+
+- Java 21 (Azul Zulu), Gradle, Maven
 - vim, nano, python3, build-essential
 
 ### Customizing Installed Packages
@@ -114,7 +116,7 @@ The Docker image is customizable via two config files:
 | File | Purpose | Example |
 |------|---------|---------|
 | `packages.apt` | apt packages | vim, python3, ruby |
-| `sdkman.txt` | SDKMAN tools | java:21.0.2-tem, kotlin, scala |
+| `sdkman.txt` | SDKMAN tools | java:21.0.9-zulu, kotlin, scala |
 
 On first build, these are created from `.example` files. To customize:
 
@@ -128,6 +130,7 @@ dangerous-claude build
 ```
 
 **For a minimal image** (no Java/Python/etc):
+
 ```bash
 # Create empty config files
 echo "" > ~/.dangerous-claude/packages.apt
@@ -156,12 +159,15 @@ For maximum security, only mount the specific directories you need.
 ## Troubleshooting
 
 ### "Permission denied" errors
+
 The container runs as a non-root user. Ensure your mounted directories are readable.
 
 ### Container won't start
+
 Try rebuilding: `dangerous-claude build`
 
 ### Authentication issues
+
 If you're logged in on your host but the container asks for auth, make sure `~/.claude.json` exists and contains `hasCompletedOnboarding: true`.
 
 ## License
