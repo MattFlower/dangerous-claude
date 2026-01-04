@@ -1,5 +1,7 @@
 # dangerous-claude
 
+![dangerous-claude](dangerous-claude-image.png)
+
 Run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) in a sandboxed Docker container with `--dangerously-skip-permissions`.
 
 ## Why?
