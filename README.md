@@ -19,12 +19,12 @@ Claude Code's `--dangerously-skip-permissions` flag lets Claude execute commands
 - **Conversation persistence**: Continue or resume previous conversations
 - **Customizable tools**: Choose which languages and tools to install (Java, Python, Ruby, Rust, etc.)
 
-## Prerequisites
+## Installation
+
+### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) installed and running
 - A Claude account (either [Claude Max](https://claude.ai) subscription or [Anthropic API](https://console.anthropic.com/) key)
-
-## Installation
 
 ### Quick Install
 
