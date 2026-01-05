@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-01-04
+
+### Fixed
+
+- **Linux permission errors**: Fixed "EACCES: permission denied" errors on Linux when Claude tries to write to mounted volumes. The container now dynamically adjusts the claude user's UID/GID at runtime to match the host user's ownership, ensuring seamless file access without requiring image rebuilds.
+
 ## [1.1.0] - 2026-01-04
 
 ### Added
@@ -45,5 +51,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Only explicitly mounted directories are accessible
 - Host git config mounted read-only
 
+[1.1.1]: https://github.com/MattFlower/dangerous-claude/releases/tag/v1.1.1
 [1.1.0]: https://github.com/MattFlower/dangerous-claude/releases/tag/v1.1.0
 [1.0.0]: https://github.com/MattFlower/dangerous-claude/releases/tag/v1.0.0
