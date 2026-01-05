@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     gnupg \
     bash \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Create symlink for fd (Ubuntu names it fdfind)
@@ -81,13 +82,16 @@ RUN echo 'source "$HOME/.sdkman/bin/sdkman-init.sh"' >> /home/claude/.bashrc && 
 # Set working directory
 WORKDIR /workspace
 
-# Copy entrypoint script
-COPY --chown=claude:claude entrypoint.sh /home/claude/entrypoint.sh
-RUN chmod +x /home/claude/entrypoint.sh
+# Switch to root to copy entrypoint script
+USER root
+
+# Copy entrypoint script (owned by root since it needs to run as root initially)
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Environment variables
 ENV HOME=/home/claude
 ENV SDKMAN_DIR=/home/claude/.sdkman
 
-# The entrypoint will handle updating and starting Claude
-ENTRYPOINT ["/home/claude/entrypoint.sh"]
+# The entrypoint will handle UID/GID mapping, updating, and starting Claude
+ENTRYPOINT ["/entrypoint.sh"]
