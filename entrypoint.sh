@@ -19,37 +19,44 @@ fi
 CURRENT_UID=$(id -u $CLAUDE_USER)
 CURRENT_GID=$(id -g $CLAUDE_USER)
 
-# Update claude user's GID if it doesn't match the host
-if [ "$HOST_GID" != "$CURRENT_GID" ]; then
-    # Check if target GID is already taken by another group
-    EXISTING_GROUP=$(getent group "$HOST_GID" | cut -d: -f1 || true)
-    if [ -n "$EXISTING_GROUP" ] && [ "$EXISTING_GROUP" != "$CLAUDE_USER" ]; then
-        # Use the existing group instead of creating a new one
-        echo "Using existing group $EXISTING_GROUP (GID $HOST_GID) for claude user..."
-        usermod -g "$EXISTING_GROUP" "$CLAUDE_USER"
-    else
-        echo "Adjusting claude group ID from $CURRENT_GID to $HOST_GID..."
-        groupmod -g "$HOST_GID" "$CLAUDE_USER"
+# Skip UID/GID adjustment if mounted volume appears as root (UID/GID 0)
+# This happens on macOS with Docker Desktop, where file permissions are handled
+# transparently and the claude user can already access the files
+if [ "$HOST_UID" = "0" ] && [ "$HOST_GID" = "0" ]; then
+    echo "Mounted volume owned by root (likely macOS Docker Desktop), skipping UID/GID adjustment..."
+else
+    # Update claude user's GID if it doesn't match the host
+    if [ "$HOST_GID" != "$CURRENT_GID" ]; then
+        # Check if target GID is already taken by another group
+        EXISTING_GROUP=$(getent group "$HOST_GID" | cut -d: -f1 || true)
+        if [ -n "$EXISTING_GROUP" ] && [ "$EXISTING_GROUP" != "$CLAUDE_USER" ]; then
+            # Use the existing group instead of creating a new one
+            echo "Using existing group $EXISTING_GROUP (GID $HOST_GID) for claude user..."
+            usermod -g "$EXISTING_GROUP" "$CLAUDE_USER"
+        else
+            echo "Adjusting claude group ID from $CURRENT_GID to $HOST_GID..."
+            groupmod -g "$HOST_GID" "$CLAUDE_USER"
+        fi
     fi
-fi
 
-# Update claude user's UID if it doesn't match the host
-if [ "$HOST_UID" != "$CURRENT_UID" ]; then
-    # Check if target UID is already taken by another user
-    EXISTING_USER=$(getent passwd "$HOST_UID" | cut -d: -f1 || true)
-    if [ -n "$EXISTING_USER" ] && [ "$EXISTING_USER" != "$CLAUDE_USER" ]; then
-        # Remove the conflicting user (typically just the default ubuntu user)
-        echo "Removing conflicting user $EXISTING_USER (UID $HOST_UID)..."
-        userdel "$EXISTING_USER" 2>/dev/null || true
+    # Update claude user's UID if it doesn't match the host
+    if [ "$HOST_UID" != "$CURRENT_UID" ]; then
+        # Check if target UID is already taken by another user
+        EXISTING_USER=$(getent passwd "$HOST_UID" | cut -d: -f1 || true)
+        if [ -n "$EXISTING_USER" ] && [ "$EXISTING_USER" != "$CLAUDE_USER" ]; then
+            # Remove the conflicting user (typically just the default ubuntu user)
+            echo "Removing conflicting user $EXISTING_USER (UID $HOST_UID)..."
+            userdel "$EXISTING_USER" 2>/dev/null || true
+        fi
+        echo "Adjusting claude user ID from $CURRENT_UID to $HOST_UID..."
+        usermod -u "$HOST_UID" "$CLAUDE_USER"
     fi
-    echo "Adjusting claude user ID from $CURRENT_UID to $HOST_UID..."
-    usermod -u "$HOST_UID" "$CLAUDE_USER"
-fi
 
-# Fix ownership of claude's home directory if UID/GID changed
-if [ "$HOST_UID" != "$CURRENT_UID" ] || [ "$HOST_GID" != "$CURRENT_GID" ]; then
-    echo "Fixing ownership of $CLAUDE_HOME..."
-    chown -R "$CLAUDE_USER:$CLAUDE_USER" "$CLAUDE_HOME"
+    # Fix ownership of claude's home directory if UID/GID changed
+    if [ "$HOST_UID" != "$CURRENT_UID" ] || [ "$HOST_GID" != "$CURRENT_GID" ]; then
+        echo "Fixing ownership of $CLAUDE_HOME..."
+        chown -R "$CLAUDE_USER:$CLAUDE_USER" "$CLAUDE_HOME"
+    fi
 fi
 
 # Now drop privileges and run the rest as the claude user
