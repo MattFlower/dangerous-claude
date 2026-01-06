@@ -19,6 +19,8 @@ dangerous-claude (CLI)
     │
     ├── Pulls pre-built image from ghcr.io (or builds locally if customized)
     │
+    ├── Syncs: macOS Keychain OAuth credentials → ~/.claude/.credentials.json
+    │
     ├── Mounts: source dirs → /workspace/*
     │           ~/.claude → /mnt/claude-data
     │           ~/.gitconfig (read-only)
@@ -125,6 +127,17 @@ Edit `env.txt` to list environment variable names to pass into the container (on
 - Host git config mounted read-only
 - Network access allowed (for API calls and package downloads)
 - `--dangerously-skip-permissions` only applies inside the sandbox
+
+## macOS Keychain Credential Sync
+
+On macOS, Claude Code stores OAuth credentials in the system Keychain rather than in `~/.claude/.credentials.json`. Since Docker containers cannot access the host's Keychain, dangerous-claude syncs credentials before each run:
+
+- **Requires jq**: Install with `brew install jq` for credential syncing to work
+- **Syncs when changed**: Credentials are only written when they differ from the existing file
+- **Preserves existing**: If Keychain query fails (locked, access denied), existing credentials are kept
+- **Expiration warnings**: Warns if the OAuth token appears to be expired
+- **Symlink protection**: Refuses to write if credentials file is a symlink
+- **Atomic writes**: Uses temp file + mv pattern on same filesystem
 
 ## Git Worktree Limitation
 

@@ -27,7 +27,7 @@
 
 set -e
 
-VERSION="1.1.2"
+VERSION="1.1.3"
 
 # Configuration
 IMAGE_NAME="dangerous-claude"
@@ -99,6 +99,116 @@ done
 
 # Create state directory if it doesn't exist
 mkdir -p "$CLAUDE_STATE_DIR"
+
+# Sync OAuth credentials from macOS Keychain to file
+# On macOS, Claude Code stores credentials in the Keychain, but Docker can't access it.
+# This function extracts credentials and writes them to ~/.claude/.credentials.json
+# Returns: 0 always (errors are logged to stderr but don't stop container startup)
+# Known limitations:
+#   - If interrupted during write, temp file may be left behind in $CLAUDE_STATE_DIR
+#   - Keychain prompts may block if run non-interactively with locked keychain
+sync_keychain_credentials() {
+  # Only run on macOS
+  if [[ "$(uname)" != "Darwin" ]]; then
+    return 0
+  fi
+
+  local credentials_file="$CLAUDE_STATE_DIR/.credentials.json"
+
+  # Known keychain service names used by Claude Code (check in order of preference)
+  local keychain_services=(
+    "Claude Code-credentials"
+    "claude-credentials"
+  )
+
+  # Require jq for proper JSON handling (warn but don't fail - caller doesn't check return)
+  if ! command -v jq &>/dev/null; then
+    echo "Warning: jq is not installed, cannot sync Keychain credentials" >&2
+    echo "  Install with: brew install jq" >&2
+    return 0
+  fi
+
+  # Try to extract credentials from Keychain (try each known service name)
+  local keychain_data=""
+  for service in "${keychain_services[@]}"; do
+    if keychain_data=$(security find-generic-password -s "$service" -w 2>/dev/null); then
+      break
+    fi
+  done
+
+  # No credentials in Keychain - don't delete existing file
+  # (keychain could be locked, access denied, or credentials stored elsewhere)
+  if [ -z "$keychain_data" ]; then
+    return 0
+  fi
+
+  # Validate and normalize JSON for comparison
+  local normalized_data
+  if ! normalized_data=$(printf '%s' "$keychain_data" | jq -cS . 2>/dev/null); then
+    echo "Warning: Keychain credentials are not valid JSON, skipping sync" >&2
+    return 0
+  fi
+
+  # Check for token expiration (warn but don't block)
+  local expires_at
+  expires_at=$(printf '%s' "$normalized_data" | jq -r '.claudeAiOauth.expiresAt // empty' 2>/dev/null)
+  # Only check if expires_at is a valid number
+  if [ -n "$expires_at" ] && [[ "$expires_at" =~ ^[0-9]+$ ]]; then
+    local now
+    now=$(date +%s)
+    # expiresAt is in milliseconds, convert to seconds
+    local expires_sec=$((expires_at / 1000))
+    if [ "$expires_sec" -lt "$now" ]; then
+      echo "Warning: OAuth token appears to be expired. You may need to run: dangerous-claude --login" >&2
+    fi
+  fi
+
+  # Security check: refuse to write if destination is a symlink
+  if [ -L "$credentials_file" ]; then
+    echo "Error: $credentials_file is a symlink, refusing to write credentials" >&2
+    return 0
+  fi
+
+  # Check if file already exists and has the same content (compare normalized JSON)
+  if [ -f "$credentials_file" ]; then
+    local existing_normalized
+    existing_normalized=$(jq -cS . "$credentials_file" 2>/dev/null || echo "")
+    if [ "$existing_normalized" = "$normalized_data" ]; then
+      # Credentials are already in sync
+      return 0
+    fi
+  fi
+
+  # Write credentials atomically using temp file + mv
+  local temp_file
+  temp_file=$(mktemp "$CLAUDE_STATE_DIR/.tmp.XXXXXX") || {
+    echo "Error: Failed to create temp file for credentials sync" >&2
+    return 0
+  }
+
+  # Set permissions before writing sensitive data
+  if ! chmod 600 "$temp_file"; then
+    echo "Error: Failed to set permissions on temp file" >&2
+    rm -f "$temp_file" 2>/dev/null
+    return 0
+  fi
+
+  # Write normalized JSON to temp file (consistent format for future comparisons)
+  if ! printf '%s\n' "$normalized_data" > "$temp_file"; then
+    echo "Error: Failed to write credentials to temp file" >&2
+    rm -f "$temp_file" 2>/dev/null
+    return 0
+  fi
+
+  # Atomic move to final location
+  if ! mv "$temp_file" "$credentials_file"; then
+    echo "Error: Failed to move credentials file into place" >&2
+    rm -f "$temp_file" 2>/dev/null
+    return 0
+  fi
+
+  echo "Synced OAuth credentials from macOS Keychain" >&2
+}
 
 # Prepare config files for build (copy from .example if not present)
 prepare_config_files() {
@@ -186,6 +296,9 @@ elif ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
     pull_image
   fi
 fi
+
+# Sync credentials from macOS Keychain before starting container
+sync_keychain_credentials
 
 # Build volume mounts
 VOLUME_ARGS=()

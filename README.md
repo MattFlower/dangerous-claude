@@ -25,6 +25,7 @@ Claude Code's `--dangerously-skip-permissions` flag lets Claude execute commands
 
 - [Docker](https://docs.docker.com/get-docker/) installed and running
 - A Claude account (either [Claude Max](https://claude.ai) subscription or [Anthropic API](https://console.anthropic.com/) key)
+- **macOS only**: [jq](https://jqlang.github.io/jq/) for Keychain credential sync (`brew install jq`)
 
 ### Quick Install
 
@@ -179,6 +180,20 @@ Try rebuilding: `dangerous-claude --build`
 ### Authentication issues
 
 If you're logged in on your host but the container asks for auth, make sure `~/.claude.json` exists and contains `hasCompletedOnboarding: true`.
+
+### macOS Keychain sync not working
+
+On macOS, credentials are stored in the system Keychain. If you see "Warning: jq is not installed", run:
+
+```bash
+brew install jq
+```
+
+If your OAuth token is expired, run:
+
+```bash
+dangerous-claude --login
+```
 
 ## Contributing
 
