@@ -27,7 +27,7 @@
 
 set -e
 
-VERSION="1.1.3"
+VERSION="1.1.4"
 
 # Configuration
 IMAGE_NAME="dangerous-claude"
@@ -103,6 +103,7 @@ mkdir -p "$CLAUDE_STATE_DIR"
 # Sync OAuth credentials from macOS Keychain to file
 # On macOS, Claude Code stores credentials in the Keychain, but Docker can't access it.
 # This function extracts credentials and writes them to ~/.claude/.credentials.json
+# Only syncs if: file doesn't exist OR Keychain has newer credentials (by expiresAt)
 # Returns: 0 always (errors are logged to stderr but don't stop container startup)
 # Known limitations:
 #   - If interrupted during write, temp file may be left behind in $CLAUDE_STATE_DIR
@@ -149,15 +150,16 @@ sync_keychain_credentials() {
     return 0
   fi
 
+  # Extract expiresAt from Keychain data (check both claudeAiOauth and oauthAccount formats)
+  local keychain_expires
+  keychain_expires=$(printf '%s' "$normalized_data" | jq -r '.claudeAiOauth.expiresAt // .oauthAccount.expiresAt // 0' 2>/dev/null)
+
   # Check for token expiration (warn but don't block)
-  local expires_at
-  expires_at=$(printf '%s' "$normalized_data" | jq -r '.claudeAiOauth.expiresAt // empty' 2>/dev/null)
-  # Only check if expires_at is a valid number
-  if [ -n "$expires_at" ] && [[ "$expires_at" =~ ^[0-9]+$ ]]; then
+  if [ -n "$keychain_expires" ] && [[ "$keychain_expires" =~ ^[0-9]+$ ]] && [ "$keychain_expires" != "0" ]; then
     local now
     now=$(date +%s)
     # expiresAt is in milliseconds, convert to seconds
-    local expires_sec=$((expires_at / 1000))
+    local expires_sec=$((keychain_expires / 1000))
     if [ "$expires_sec" -lt "$now" ]; then
       echo "Warning: OAuth token appears to be expired. You may need to run: dangerous-claude --login" >&2
     fi
@@ -169,12 +171,24 @@ sync_keychain_credentials() {
     return 0
   fi
 
-  # Check if file already exists and has the same content (compare normalized JSON)
+  # Check if file already exists and compare
   if [ -f "$credentials_file" ]; then
     local existing_normalized
     existing_normalized=$(jq -cS . "$credentials_file" 2>/dev/null || echo "")
+
+    # If content is identical, nothing to do
     if [ "$existing_normalized" = "$normalized_data" ]; then
-      # Credentials are already in sync
+      return 0
+    fi
+
+    # Extract expiresAt from existing file
+    local file_expires
+    file_expires=$(printf '%s' "$existing_normalized" | jq -r '.claudeAiOauth.expiresAt // .oauthAccount.expiresAt // 0' 2>/dev/null || echo "0")
+
+    # Only sync if Keychain credentials are newer (have later expiration)
+    # This prevents overwriting refreshed tokens from the container with stale Keychain data
+    if [ "$keychain_expires" -le "$file_expires" ] 2>/dev/null; then
+      # File has same or newer credentials, don't overwrite
       return 0
     fi
   fi
