@@ -76,6 +76,12 @@ if [ -d "/mnt/claude-data" ] && [ ! -L "$HOME/.claude" ]; then
     ln -sf /mnt/claude-data "$HOME/.claude"
 fi
 
+# Copy ~/.claude.json from staging location if present
+# Each container gets its own copy to avoid conflicts when running multiple instances
+if [ -f "/mnt/claude-config/.claude.json" ]; then
+    cp /mnt/claude-config/.claude.json "$HOME/.claude.json"
+fi
+
 # Update Claude Code to the latest version
 echo "Updating Claude Code to the latest version..."
 npm update -g @anthropic-ai/claude-code 2>/dev/null || npm install -g @anthropic-ai/claude-code
@@ -107,10 +113,39 @@ if [ "$CLAUDE_CONTINUE" = "true" ]; then
     echo "Continuing most recent conversation..."
 fi
 
+# Get list of mounted project directories (in user-specified order)
+WORKSPACE_DIRS=()
+if [ -n "$WORKSPACE_ORDER" ]; then
+    # Use order passed from dangerous-claude (colon-separated)
+    IFS=: read -ra WORKSPACE_DIRS <<< "$WORKSPACE_ORDER"
+else
+    # Fallback to glob (alphabetical) if env var not set
+    for dir in /workspace/*/; do
+        [ -d "$dir" ] && WORKSPACE_DIRS+=("$dir")
+    done
+fi
+
+# Change to first project directory and add others via --add-dir
+# This ensures each project gets its own section in .claude.json,
+# avoiding conflicts when running multiple containers simultaneously
+if [ ${#WORKSPACE_DIRS[@]} -gt 0 ]; then
+    # cd into the first directory (primary project)
+    cd "${WORKSPACE_DIRS[0]}"
+
+    # Add remaining directories via --add-dir
+    for ((i=1; i<${#WORKSPACE_DIRS[@]}; i++)); do
+        CLAUDE_ARGS+=("--add-dir" "${WORKSPACE_DIRS[$i]}")
+    done
+fi
+
 echo "Starting Claude Code..."
 echo "Working directory: $(pwd)"
-echo "Mounted volumes:"
-ls -la /workspace/
+if [ ${#WORKSPACE_DIRS[@]} -gt 1 ]; then
+    echo "Additional directories:"
+    for ((i=1; i<${#WORKSPACE_DIRS[@]}; i++)); do
+        echo "  ${WORKSPACE_DIRS[$i]}"
+    done
+fi
 echo ""
 echo "-------------------------------------------"
 echo ""

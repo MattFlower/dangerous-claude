@@ -306,10 +306,12 @@ VOLUME_ARGS=()
 # Mount Claude state for conversation persistence (symlinked to ~/.claude at runtime)
 VOLUME_ARGS+=("-v" "$CLAUDE_STATE_DIR:/mnt/claude-data")
 
-# Mount ~/.claude.json (contains hasCompletedOnboarding and other essential state)
+# Mount ~/.claude.json to a staging location (read-only)
+# The entrypoint will copy it to the actual location, so each container
+# gets its own writable copy and avoids conflicts when running multiple instances
 CLAUDE_JSON="$HOME/.claude.json"
 if [ -f "$CLAUDE_JSON" ]; then
-  VOLUME_ARGS+=("-v" "$CLAUDE_JSON:/home/claude/.claude.json")
+  VOLUME_ARGS+=("-v" "$CLAUDE_JSON:/mnt/claude-config/.claude.json:ro")
 fi
 
 # Mount git config so commits appear as the user
@@ -335,7 +337,8 @@ is_git_worktree() {
   [ -f "$git_file" ] && grep -q "^gitdir:" "$git_file" 2>/dev/null
 }
 
-# Mount each directory
+# Mount each directory and build ordered list for entrypoint
+WORKSPACE_ORDER=()
 for dir in "${DIRECTORIES[@]}"; do
   # Get absolute path
   abs_path="$(cd "$dir" 2>/dev/null && pwd)" || {
@@ -347,6 +350,7 @@ for dir in "${DIRECTORIES[@]}"; do
   dir_name="$(basename "$abs_path")"
 
   VOLUME_ARGS+=("-v" "$abs_path:/workspace/$dir_name")
+  WORKSPACE_ORDER+=("/workspace/$dir_name")
   echo "Mounting: $abs_path -> /workspace/$dir_name"
 
   # Warn if this is a git worktree
@@ -365,6 +369,7 @@ if [ ${#DIRECTORIES[@]} -eq 0 ]; then
   abs_path="$(pwd)"
   dir_name="$(basename "$abs_path")"
   VOLUME_ARGS+=("-v" "$abs_path:/workspace/$dir_name")
+  WORKSPACE_ORDER+=("/workspace/$dir_name")
   echo "Mounting current directory: $abs_path -> /workspace/$dir_name"
 fi
 
@@ -402,6 +407,12 @@ fi
 
 if [ -n "$RESUME_ID" ]; then
   ENV_ARGS+=("-e" "CLAUDE_RESUME=$RESUME_ID")
+fi
+
+# Pass workspace directory order to entrypoint (colon-separated)
+if [ ${#WORKSPACE_ORDER[@]} -gt 0 ]; then
+  WORKSPACE_ORDER_STR=$(IFS=:; echo "${WORKSPACE_ORDER[*]}")
+  ENV_ARGS+=("-e" "WORKSPACE_ORDER=$WORKSPACE_ORDER_STR")
 fi
 
 # Determine the command to run
