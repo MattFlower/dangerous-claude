@@ -306,10 +306,12 @@ VOLUME_ARGS=()
 # Mount Claude state for conversation persistence (symlinked to ~/.claude at runtime)
 VOLUME_ARGS+=("-v" "$CLAUDE_STATE_DIR:/mnt/claude-data")
 
-# Mount ~/.claude.json (contains hasCompletedOnboarding and other essential state)
+# Mount ~/.claude.json to a staging location (read-only)
+# The entrypoint will copy it to the actual location, so each container
+# gets its own writable copy and avoids conflicts when running multiple instances
 CLAUDE_JSON="$HOME/.claude.json"
 if [ -f "$CLAUDE_JSON" ]; then
-  VOLUME_ARGS+=("-v" "$CLAUDE_JSON:/home/claude/.claude.json")
+  VOLUME_ARGS+=("-v" "$CLAUDE_JSON:/mnt/claude-config/.claude.json:ro")
 fi
 
 # Mount git config so commits appear as the user

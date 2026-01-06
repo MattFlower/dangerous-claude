@@ -76,6 +76,12 @@ if [ -d "/mnt/claude-data" ] && [ ! -L "$HOME/.claude" ]; then
     ln -sf /mnt/claude-data "$HOME/.claude"
 fi
 
+# Copy ~/.claude.json from staging location if present
+# Each container gets its own copy to avoid conflicts when running multiple instances
+if [ -f "/mnt/claude-config/.claude.json" ]; then
+    cp /mnt/claude-config/.claude.json "$HOME/.claude.json"
+fi
+
 # Update Claude Code to the latest version
 echo "Updating Claude Code to the latest version..."
 npm update -g @anthropic-ai/claude-code 2>/dev/null || npm install -g @anthropic-ai/claude-code
