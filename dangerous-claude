@@ -100,14 +100,17 @@ done
 # Create state directory if it doesn't exist
 mkdir -p "$CLAUDE_STATE_DIR"
 
-# Sync OAuth credentials from macOS Keychain to file
+# Sync OAuth credentials from macOS Keychain to file (one-time seed)
 # On macOS, Claude Code stores credentials in the Keychain, but Docker can't access it.
 # This function extracts credentials and writes them to ~/.claude/.credentials.json
-# Only syncs if: file doesn't exist OR Keychain has newer credentials (by expiresAt)
+#
+# IMPORTANT: This only syncs if the file doesn't exist or contains invalid JSON.
+# Once a valid credentials file exists, we NEVER overwrite it from Keychain because:
+#   1. The container may have refreshed the token (writing to the file)
+#   2. The container CANNOT update the Keychain (no macOS Keychain access in Docker)
+#   3. Therefore, Keychain credentials are always potentially stale after first use
+#
 # Returns: 0 always (errors are logged to stderr but don't stop container startup)
-# Known limitations:
-#   - If interrupted during write, temp file may be left behind in $CLAUDE_STATE_DIR
-#   - Keychain prompts may block if run non-interactively with locked keychain
 sync_keychain_credentials() {
   # Only run on macOS
   if [[ "$(uname)" != "Darwin" ]]; then
@@ -116,18 +119,35 @@ sync_keychain_credentials() {
 
   local credentials_file="$CLAUDE_STATE_DIR/.credentials.json"
 
-  # Known keychain service names used by Claude Code (check in order of preference)
-  local keychain_services=(
-    "Claude Code-credentials"
-    "claude-credentials"
-  )
-
-  # Require jq for proper JSON handling (warn but don't fail - caller doesn't check return)
+  # Require jq for JSON validation
   if ! command -v jq &>/dev/null; then
     echo "Warning: jq is not installed, cannot sync Keychain credentials" >&2
     echo "  Install with: brew install jq" >&2
     return 0
   fi
+
+  # If credentials file already exists with valid JSON, prefer it over Keychain
+  # (Container may have refreshed tokens that Keychain doesn't have)
+  if [ -f "$credentials_file" ] && [ ! -L "$credentials_file" ]; then
+    if jq -e . "$credentials_file" &>/dev/null; then
+      # File exists with valid JSON - don't overwrite
+      return 0
+    fi
+    # File exists but is invalid JSON - will overwrite below
+    echo "Warning: Existing credentials file is invalid JSON, will sync from Keychain" >&2
+  fi
+
+  # Security check: refuse to write if destination is a symlink
+  if [ -L "$credentials_file" ]; then
+    echo "Error: $credentials_file is a symlink, refusing to write credentials" >&2
+    return 0
+  fi
+
+  # Known keychain service names used by Claude Code (check in order of preference)
+  local keychain_services=(
+    "Claude Code-credentials"
+    "claude-credentials"
+  )
 
   # Try to extract credentials from Keychain (try each known service name)
   local keychain_data=""
@@ -137,91 +157,89 @@ sync_keychain_credentials() {
     fi
   done
 
-  # No credentials in Keychain - don't delete existing file
-  # (keychain could be locked, access denied, or credentials stored elsewhere)
+  # No credentials in Keychain
   if [ -z "$keychain_data" ]; then
     return 0
   fi
 
-  # Validate and normalize JSON for comparison
+  # Validate JSON from Keychain
   local normalized_data
   if ! normalized_data=$(printf '%s' "$keychain_data" | jq -cS . 2>/dev/null); then
     echo "Warning: Keychain credentials are not valid JSON, skipping sync" >&2
     return 0
   fi
 
-  # Extract expiresAt from Keychain data (check both claudeAiOauth and oauthAccount formats)
-  local keychain_expires
-  keychain_expires=$(printf '%s' "$normalized_data" | jq -r '.claudeAiOauth.expiresAt // .oauthAccount.expiresAt // 0' 2>/dev/null)
-
-  # Check for token expiration (warn but don't block)
-  if [ -n "$keychain_expires" ] && [[ "$keychain_expires" =~ ^[0-9]+$ ]] && [ "$keychain_expires" != "0" ]; then
-    local now
-    now=$(date +%s)
-    # expiresAt is in milliseconds, convert to seconds
-    local expires_sec=$((keychain_expires / 1000))
-    if [ "$expires_sec" -lt "$now" ]; then
-      echo "Warning: OAuth token appears to be expired. You may need to run: dangerous-claude --login" >&2
+  # Check for token expiration (warn but don't block - user may want to use expired token to trigger refresh)
+  local expires_at
+  expires_at=$(printf '%s' "$normalized_data" | jq -r '.claudeAiOauth.expiresAt // .oauthAccount.expiresAt // empty' 2>/dev/null)
+  if [ -n "$expires_at" ] && [[ "$expires_at" =~ ^[0-9]+$ ]]; then
+    local now_ms
+    now_ms=$(($(date +%s) * 1000))
+    if [ "$expires_at" -lt "$now_ms" ]; then
+      echo "Warning: OAuth token from Keychain appears to be expired. You may need to run: dangerous-claude --login" >&2
     fi
   fi
 
-  # Security check: refuse to write if destination is a symlink
-  if [ -L "$credentials_file" ]; then
-    echo "Error: $credentials_file is a symlink, refusing to write credentials" >&2
-    return 0
-  fi
-
-  # Check if file already exists and compare
-  if [ -f "$credentials_file" ]; then
-    local existing_normalized
-    existing_normalized=$(jq -cS . "$credentials_file" 2>/dev/null || echo "")
-
-    # If content is identical, nothing to do
-    if [ "$existing_normalized" = "$normalized_data" ]; then
-      return 0
-    fi
-
-    # Extract expiresAt from existing file
-    local file_expires
-    file_expires=$(printf '%s' "$existing_normalized" | jq -r '.claudeAiOauth.expiresAt // .oauthAccount.expiresAt // 0' 2>/dev/null || echo "0")
-
-    # Only sync if Keychain credentials are newer (have later expiration)
-    # This prevents overwriting refreshed tokens from the container with stale Keychain data
-    if [ "$keychain_expires" -le "$file_expires" ] 2>/dev/null; then
-      # File has same or newer credentials, don't overwrite
-      return 0
-    fi
-  fi
-
-  # Write credentials atomically using temp file + mv
+  # Write credentials atomically using temp file + mv with file locking
   local temp_file
-  temp_file=$(mktemp "$CLAUDE_STATE_DIR/.tmp.XXXXXX") || {
+  temp_file=$(mktemp "$CLAUDE_STATE_DIR/.credentials.tmp.XXXXXX") || {
     echo "Error: Failed to create temp file for credentials sync" >&2
     return 0
   }
 
-  # Set permissions before writing sensitive data
-  if ! chmod 600 "$temp_file"; then
-    echo "Error: Failed to set permissions on temp file" >&2
-    rm -f "$temp_file" 2>/dev/null
-    return 0
-  fi
+  # Use a lock file to prevent race conditions with concurrent dangerous-claude instances
+  local lock_file="$CLAUDE_STATE_DIR/.credentials.lock"
+  (
+    # Try to acquire lock (wait up to 5 seconds)
+    if command -v flock &>/dev/null; then
+      flock -w 5 200 || {
+        echo "Warning: Could not acquire lock for credentials sync" >&2
+        rm -f "$temp_file" 2>/dev/null
+        return 0
+      }
+    fi
 
-  # Write normalized JSON to temp file (consistent format for future comparisons)
-  if ! printf '%s\n' "$normalized_data" > "$temp_file"; then
-    echo "Error: Failed to write credentials to temp file" >&2
-    rm -f "$temp_file" 2>/dev/null
-    return 0
-  fi
+    # Re-check if file was created while waiting for lock
+    if [ -f "$credentials_file" ] && [ ! -L "$credentials_file" ]; then
+      if jq -e . "$credentials_file" &>/dev/null; then
+        rm -f "$temp_file" 2>/dev/null
+        return 0
+      fi
+    fi
 
-  # Atomic move to final location
-  if ! mv "$temp_file" "$credentials_file"; then
-    echo "Error: Failed to move credentials file into place" >&2
-    rm -f "$temp_file" 2>/dev/null
-    return 0
-  fi
+    # Set permissions before writing sensitive data
+    if ! chmod 600 "$temp_file"; then
+      echo "Error: Failed to set permissions on temp file" >&2
+      rm -f "$temp_file" 2>/dev/null
+      return 0
+    fi
 
-  echo "Synced OAuth credentials from macOS Keychain" >&2
+    # Write normalized JSON to temp file
+    if ! printf '%s\n' "$normalized_data" > "$temp_file"; then
+      echo "Error: Failed to write credentials to temp file" >&2
+      rm -f "$temp_file" 2>/dev/null
+      return 0
+    fi
+
+    # Final symlink check before move
+    if [ -L "$credentials_file" ]; then
+      echo "Error: $credentials_file became a symlink, refusing to write" >&2
+      rm -f "$temp_file" 2>/dev/null
+      return 0
+    fi
+
+    # Atomic move to final location
+    if ! mv "$temp_file" "$credentials_file"; then
+      echo "Error: Failed to move credentials file into place" >&2
+      rm -f "$temp_file" 2>/dev/null
+      return 0
+    fi
+
+    echo "Synced OAuth credentials from macOS Keychain" >&2
+  ) 200>"$lock_file"
+
+  # Clean up lock file (non-critical if this fails)
+  rm -f "$lock_file" 2>/dev/null
 }
 
 # Prepare config files for build (copy from .example if not present)
