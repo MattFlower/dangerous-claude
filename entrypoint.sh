@@ -113,11 +113,17 @@ if [ "$CLAUDE_CONTINUE" = "true" ]; then
     echo "Continuing most recent conversation..."
 fi
 
-# Get list of mounted project directories
+# Get list of mounted project directories (in user-specified order)
 WORKSPACE_DIRS=()
-for dir in /workspace/*/; do
-    [ -d "$dir" ] && WORKSPACE_DIRS+=("$dir")
-done
+if [ -n "$WORKSPACE_ORDER" ]; then
+    # Use order passed from dangerous-claude (colon-separated)
+    IFS=: read -ra WORKSPACE_DIRS <<< "$WORKSPACE_ORDER"
+else
+    # Fallback to glob (alphabetical) if env var not set
+    for dir in /workspace/*/; do
+        [ -d "$dir" ] && WORKSPACE_DIRS+=("$dir")
+    done
+fi
 
 # Change to first project directory and add others via --add-dir
 # This ensures each project gets its own section in .claude.json,
