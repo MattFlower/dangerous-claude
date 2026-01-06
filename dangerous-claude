@@ -209,6 +209,11 @@ if [ -d "$HOME/.gradle" ]; then
   VOLUME_ARGS+=("-v" "$HOME/.gradle:/home/claude/.gradle")
 fi
 
+# Mount Maven directory for shared caches and configs
+if [ -d "$HOME/.m2" ]; then
+  VOLUME_ARGS+=("-v" "$HOME/.m2:/home/claude/.m2")
+fi
+
 # Function to check if a directory is a git worktree
 is_git_worktree() {
   local dir="$1"

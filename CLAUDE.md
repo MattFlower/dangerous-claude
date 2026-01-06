@@ -22,7 +22,8 @@ dangerous-claude (CLI)
     ├── Mounts: source dirs → /workspace/*
     │           ~/.claude → /mnt/claude-data
     │           ~/.gitconfig (read-only)
-    │           ~/.gradle (for Java projects)
+    │           ~/.gradle (for Gradle projects)
+    │           ~/.m2 (for Maven projects)
     │
     └── Passes: ANTHROPIC_API_KEY + env vars listed in env.txt
 
