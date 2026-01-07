@@ -11,6 +11,7 @@ This project wraps Claude Code in a Docker container so users can run it with fu
 - Auto-updates Claude Code on each container start
 - Supports multiple simultaneous directory mounts
 - Conversation persistence via `--continue` and `--resume` flags
+- Optional Docker access via `--docker` flag
 
 ## Architecture
 
@@ -26,6 +27,7 @@ dangerous-claude (CLI)
     │           ~/.gitconfig (read-only)
     │           ~/.gradle (for Gradle projects)
     │           ~/.m2 (for Maven projects)
+    │           /var/run/docker.sock (with --docker flag)
     │
     └── Passes: ANTHROPIC_API_KEY + env vars listed in env.txt
 
@@ -34,6 +36,7 @@ Dockerfile
     ├── Base: Ubuntu 24.04
     ├── Node.js 20.x LTS
     ├── Claude Code (@anthropic-ai/claude-code)
+    ├── Docker CLI, Buildx, Compose (for --docker flag)
     ├── SDKMAN (Java ecosystem tools)
     ├── Core tools: git, ripgrep, fd, jq, curl
     └── Optional: packages.apt, sdkman.txt customizations
@@ -41,6 +44,7 @@ Dockerfile
 entrypoint.sh
     │
     ├── Symlinks /mnt/claude-data → ~/.claude
+    ├── Configures Docker socket permissions (if enabled)
     ├── Updates Claude Code to latest
     └── Runs claude --dangerously-skip-permissions
 ```
@@ -91,6 +95,9 @@ dangerous-claude --shell
 
 # Authenticate with Claude Max
 dangerous-claude --login
+
+# Enable Docker access inside the container
+dangerous-claude --docker ./repo
 ```
 
 ## Customizing Installed Packages
@@ -127,6 +134,25 @@ Edit `env.txt` to list environment variable names to pass into the container (on
 - Host git config mounted read-only
 - Network access allowed (for API calls and package downloads)
 - `--dangerously-skip-permissions` only applies inside the sandbox
+
+## Docker Access (--docker flag)
+
+The `--docker` flag enables Docker commands inside the container by mounting the host's Docker socket. This allows Claude to build images, run containers, and use docker-compose.
+
+**How it works:**
+- Mounts `/var/run/docker.sock` from host into the container
+- Entrypoint detects the socket's GID and adds the `claude` user to a matching group
+- Docker CLI, Buildx, and Compose plugins are pre-installed in the image
+
+**Security considerations:**
+- Docker socket access is powerful - containers can access the host's Docker daemon
+- Use this flag only when Docker functionality is actually needed
+- Containers started from within dangerous-claude run on the host, not nested
+
+**Usage:**
+```bash
+dangerous-claude --docker ./my-project
+```
 
 ## macOS Keychain Credential Sync
 
