@@ -27,7 +27,7 @@
 
 set -e
 
-VERSION="1.2.0"
+VERSION="1.2.1"
 
 # Configuration
 IMAGE_NAME="dangerous-claude"
@@ -100,11 +100,16 @@ done
 # Create state directory if it doesn't exist
 mkdir -p "$CLAUDE_STATE_DIR"
 
+# Variable to store API key extracted from keychain (used later in ENV_ARGS)
+KEYCHAIN_API_KEY=""
+
 # Sync OAuth credentials from macOS Keychain to file (one-time seed)
 # On macOS, Claude Code stores credentials in the Keychain, but Docker can't access it.
-# This function extracts credentials and writes them to ~/.claude/.credentials.json
+# This function handles two credential types:
+#   1. OAuth tokens (JSON) - written to ~/.claude/.credentials.json
+#   2. API keys (sk-ant-...) - stored in KEYCHAIN_API_KEY for passing via env var
 #
-# IMPORTANT: This only syncs if the file doesn't exist or contains invalid JSON.
+# For OAuth tokens: only syncs if the file doesn't exist or contains invalid JSON.
 # Once a valid credentials file exists, we NEVER overwrite it from Keychain because:
 #   1. The container may have refreshed the token (writing to the file)
 #   2. The container CANNOT update the Keychain (no macOS Keychain access in Docker)
@@ -144,15 +149,20 @@ sync_keychain_credentials() {
   fi
 
   # Known keychain service names used by Claude Code (check in order of preference)
+  # - "Claude Code-credentials": Claude Max/Pro subscription OAuth
+  # - "Claude Code": Anthropic Console (API billing) - may store API key or OAuth
   local keychain_services=(
     "Claude Code-credentials"
+    "Claude Code"
     "claude-credentials"
   )
 
   # Try to extract credentials from Keychain (try each known service name)
   local keychain_data=""
+  local found_service=""
   for service in "${keychain_services[@]}"; do
     if keychain_data=$(security find-generic-password -s "$service" -w 2>/dev/null); then
+      found_service="$service"
       break
     fi
   done
@@ -162,6 +172,15 @@ sync_keychain_credentials() {
     return 0
   fi
 
+  # Check if this is a raw API key (starts with sk-ant-)
+  # Anthropic Console (API billing) stores API keys directly, not OAuth JSON
+  if [[ "$keychain_data" == sk-ant-* ]]; then
+    KEYCHAIN_API_KEY="$keychain_data"
+    echo "Found API key in macOS Keychain (service: $found_service)" >&2
+    return 0
+  fi
+
+  # Otherwise, it should be JSON OAuth credentials
   # Validate JSON from Keychain
   local normalized_data
   if ! normalized_data=$(printf '%s' "$keychain_data" | jq -cS . 2>/dev/null); then
@@ -423,9 +442,16 @@ fi
 echo ""
 
 # Build environment variables
-ENV_ARGS=(
-  "-e" "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
-)
+ENV_ARGS=()
+
+# Determine API key: prefer env var, fall back to keychain
+# KEYCHAIN_API_KEY is set by sync_keychain_credentials() if an API key was found
+if [ -n "$ANTHROPIC_API_KEY" ]; then
+  ENV_ARGS+=("-e" "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
+elif [ -n "$KEYCHAIN_API_KEY" ]; then
+  ENV_ARGS+=("-e" "ANTHROPIC_API_KEY=$KEYCHAIN_API_KEY")
+  echo "Using API key from macOS Keychain"
+fi
 
 # Prepare env.txt from example if not present
 if [ ! -f "$SCRIPT_DIR/env.txt" ]; then
