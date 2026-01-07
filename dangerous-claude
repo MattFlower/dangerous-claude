@@ -403,12 +403,21 @@ fi
 
 # Mount Docker socket if --docker flag is enabled
 if [ "$ENABLE_DOCKER" = true ]; then
-  DOCKER_SOCK="/var/run/docker.sock"
-  if [ -S "$DOCKER_SOCK" ]; then
+  # Check common Docker socket locations
+  DOCKER_SOCK=""
+  if [ -S "/var/run/docker.sock" ]; then
+    DOCKER_SOCK="/var/run/docker.sock"
+  elif [ -S "$HOME/.rd/docker.sock" ]; then
+    # Rancher Desktop
+    DOCKER_SOCK="$HOME/.rd/docker.sock"
+  fi
+
+  if [ -n "$DOCKER_SOCK" ]; then
     VOLUME_ARGS+=("-v" "$DOCKER_SOCK:/var/run/docker.sock")
-    echo "Docker: Mounting Docker socket for container access"
+    echo "Docker: Mounting $DOCKER_SOCK for container access"
   else
-    echo "Warning: Docker socket not found at $DOCKER_SOCK"
+    echo "Warning: Docker socket not found"
+    echo "  Checked: /var/run/docker.sock, ~/.rd/docker.sock"
     echo "  Make sure Docker is running on the host"
   fi
 fi
