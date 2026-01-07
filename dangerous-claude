@@ -180,66 +180,81 @@ sync_keychain_credentials() {
     fi
   fi
 
-  # Write credentials atomically using temp file + mv with file locking
+  # Use mkdir for portable locking (atomic on all Unix systems)
+  local lock_dir="$CLAUDE_STATE_DIR/.credentials.lock"
+  local lock_acquired=false
+  local max_attempts=10
+  local attempt=0
+
+  while [ "$attempt" -lt "$max_attempts" ]; do
+    if mkdir "$lock_dir" 2>/dev/null; then
+      lock_acquired=true
+      break
+    fi
+    # Check if lock is stale (older than 60 seconds)
+    if [ -d "$lock_dir" ]; then
+      local lock_age
+      lock_age=$(( $(date +%s) - $(stat -f %m "$lock_dir" 2>/dev/null || stat -c %Y "$lock_dir" 2>/dev/null || echo 0) ))
+      if [ "$lock_age" -gt 60 ]; then
+        rm -rf "$lock_dir" 2>/dev/null
+        continue
+      fi
+    fi
+    attempt=$((attempt + 1))
+    sleep 0.5
+  done
+
+  if [ "$lock_acquired" = false ]; then
+    echo "Warning: Could not acquire lock for credentials sync, skipping" >&2
+    return 0
+  fi
+
+  # Ensure lock is released on exit from this function
+  trap 'rm -rf "$lock_dir" 2>/dev/null' RETURN
+
+  # Re-check if file was created while waiting for lock
+  if [ -f "$credentials_file" ] && [ ! -L "$credentials_file" ]; then
+    if jq -e . "$credentials_file" &>/dev/null; then
+      return 0
+    fi
+  fi
+
+  # Write credentials atomically using temp file + mv
   local temp_file
   temp_file=$(mktemp "$CLAUDE_STATE_DIR/.credentials.tmp.XXXXXX") || {
     echo "Error: Failed to create temp file for credentials sync" >&2
     return 0
   }
 
-  # Use a lock file to prevent race conditions with concurrent dangerous-claude instances
-  local lock_file="$CLAUDE_STATE_DIR/.credentials.lock"
-  (
-    # Try to acquire lock (wait up to 5 seconds)
-    if command -v flock &>/dev/null; then
-      flock -w 5 200 || {
-        echo "Warning: Could not acquire lock for credentials sync" >&2
-        rm -f "$temp_file" 2>/dev/null
-        return 0
-      }
-    fi
+  # Set permissions before writing sensitive data
+  if ! chmod 600 "$temp_file"; then
+    echo "Error: Failed to set permissions on temp file" >&2
+    rm -f "$temp_file" 2>/dev/null
+    return 0
+  fi
 
-    # Re-check if file was created while waiting for lock
-    if [ -f "$credentials_file" ] && [ ! -L "$credentials_file" ]; then
-      if jq -e . "$credentials_file" &>/dev/null; then
-        rm -f "$temp_file" 2>/dev/null
-        return 0
-      fi
-    fi
+  # Write normalized JSON to temp file
+  if ! printf '%s\n' "$normalized_data" > "$temp_file"; then
+    echo "Error: Failed to write credentials to temp file" >&2
+    rm -f "$temp_file" 2>/dev/null
+    return 0
+  fi
 
-    # Set permissions before writing sensitive data
-    if ! chmod 600 "$temp_file"; then
-      echo "Error: Failed to set permissions on temp file" >&2
-      rm -f "$temp_file" 2>/dev/null
-      return 0
-    fi
+  # Final symlink check before move
+  if [ -L "$credentials_file" ]; then
+    echo "Error: $credentials_file became a symlink, refusing to write" >&2
+    rm -f "$temp_file" 2>/dev/null
+    return 0
+  fi
 
-    # Write normalized JSON to temp file
-    if ! printf '%s\n' "$normalized_data" > "$temp_file"; then
-      echo "Error: Failed to write credentials to temp file" >&2
-      rm -f "$temp_file" 2>/dev/null
-      return 0
-    fi
+  # Atomic move to final location
+  if ! mv "$temp_file" "$credentials_file"; then
+    echo "Error: Failed to move credentials file into place" >&2
+    rm -f "$temp_file" 2>/dev/null
+    return 0
+  fi
 
-    # Final symlink check before move
-    if [ -L "$credentials_file" ]; then
-      echo "Error: $credentials_file became a symlink, refusing to write" >&2
-      rm -f "$temp_file" 2>/dev/null
-      return 0
-    fi
-
-    # Atomic move to final location
-    if ! mv "$temp_file" "$credentials_file"; then
-      echo "Error: Failed to move credentials file into place" >&2
-      rm -f "$temp_file" 2>/dev/null
-      return 0
-    fi
-
-    echo "Synced OAuth credentials from macOS Keychain" >&2
-  ) 200>"$lock_file"
-
-  # Clean up lock file (non-critical if this fails)
-  rm -f "$lock_file" 2>/dev/null
+  echo "Synced OAuth credentials from macOS Keychain" >&2
 }
 
 # Prepare config files for build (copy from .example if not present)
