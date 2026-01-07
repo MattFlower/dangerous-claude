@@ -404,10 +404,29 @@ fi
 # Mount Docker socket if --docker flag is enabled
 if [ "$ENABLE_DOCKER" = true ]; then
   # Check common Docker socket locations
+  # Use a function to properly check sockets (including symlinks)
+  check_docker_socket() {
+    local sock="$1"
+    # Check if path exists (file, socket, or symlink)
+    if [ ! -e "$sock" ] && [ ! -L "$sock" ]; then
+      return 1
+    fi
+    # For symlinks, resolve to actual path and verify it's a socket
+    if [ -L "$sock" ]; then
+      local resolved
+      resolved=$(readlink -f "$sock" 2>/dev/null) || return 1
+      [ -S "$resolved" ] && return 0
+      return 1
+    fi
+    # Direct socket check
+    [ -S "$sock" ] && return 0
+    return 1
+  }
+
   DOCKER_SOCK=""
-  if [ -S "/var/run/docker.sock" ]; then
+  if check_docker_socket "/var/run/docker.sock"; then
     DOCKER_SOCK="/var/run/docker.sock"
-  elif [ -S "$HOME/.rd/docker.sock" ]; then
+  elif check_docker_socket "$HOME/.rd/docker.sock"; then
     # Rancher Desktop
     DOCKER_SOCK="$HOME/.rd/docker.sock"
   fi
