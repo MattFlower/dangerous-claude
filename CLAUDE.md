@@ -133,11 +133,11 @@ Edit `env.txt` to list environment variable names to pass into the container (on
 On macOS, Claude Code stores OAuth credentials in the system Keychain rather than in `~/.claude/.credentials.json`. Since Docker containers cannot access the host's Keychain, dangerous-claude syncs credentials before each run:
 
 - **Requires jq**: Install with `brew install jq` for credential syncing to work
-- **Syncs when changed**: Credentials are only written when they differ from the existing file
-- **Preserves existing**: If Keychain query fails (locked, access denied), existing credentials are kept
+- **One-time seed**: Only syncs from Keychain if credentials file doesn't exist or contains invalid JSON
+- **Preserves container tokens**: Once a valid credentials file exists, it is NEVER overwritten from Keychain (since containers can refresh tokens but can't update Keychain)
 - **Expiration warnings**: Warns if the OAuth token appears to be expired
 - **Symlink protection**: Refuses to write if credentials file is a symlink
-- **Atomic writes**: Uses temp file + mv pattern on same filesystem
+- **Atomic writes**: Uses temp file + mv with file locking to prevent race conditions
 
 ## Git Worktree Limitation
 
