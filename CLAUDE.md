@@ -23,10 +23,10 @@ dangerous-claude (CLI)
     ├── Syncs: macOS Keychain OAuth credentials → ~/.claude/.credentials.json
     │
     ├── Mounts: source dirs → /workspace/*
-    │           ~/.claude → /mnt/claude-lower (read-only)
+    │           ~/.claude → /mnt/claude-data (read-write, for persistence)
     │           ~/.gitconfig (read-only)
-    │           ~/.gradle → /mnt/gradle-lower (read-only)
-    │           ~/.m2 → /mnt/m2-lower (read-only)
+    │           ~/.gradle → /mnt/gradle-lower (read-only, overlay protected)
+    │           ~/.m2 → /mnt/m2-lower (read-only, overlay protected)
     │           /var/run/docker.sock (with --docker flag)
     │
     └── Passes: ANTHROPIC_API_KEY + env vars listed in env.txt
@@ -141,7 +141,7 @@ Edit `env.txt` to list environment variable names to pass into the container (on
 
 ### Overlay Filesystem Protection
 
-Host directories (`~/.claude`, `~/.gradle`, `~/.m2`) are protected from deletion using overlay filesystems:
+Cache directories (`~/.gradle`, `~/.m2`) are protected from deletion using overlay filesystems:
 
 ```
 Host Directory (read-only)     Container View (read-write)
@@ -164,6 +164,8 @@ Host Directory (read-only)     Container View (read-write)
 - Deletions only affect the upper layer; host files are untouched
 - On container restart, changes are discarded and original files restored
 
+**Note:** `~/.claude` is NOT overlay-protected because it stores conversation history and credentials needed for `--continue` and `--resume` to work. Changes to `~/.claude` persist to the host.
+
 **Security implementation:**
 - `CAP_SYS_ADMIN` is granted to the container (required for overlay mounting)
 - Overlays are set up as root during entrypoint initialization
@@ -172,7 +174,7 @@ Host Directory (read-only)     Container View (read-write)
 - The `claude` user cannot access `CAP_SYS_ADMIN` after the privilege drop
 
 **Disabling overlay protection:**
-Use `--no-overlay` to mount directories directly (read-write) instead of using overlays. This allows changes like downloaded dependencies to persist to the host, but removes deletion protection. When disabled, `CAP_SYS_ADMIN` is not granted to the container.
+Use `--no-overlay` to mount `~/.gradle` and `~/.m2` directly (read-write) instead of using overlays. This allows downloaded dependencies to persist to the host, but removes deletion protection. When disabled, `CAP_SYS_ADMIN` is not granted to the container.
 
 ## Docker Access (--docker flag)
 

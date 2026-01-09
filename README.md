@@ -13,7 +13,7 @@ Claude Code's `--dangerously-skip-permissions` flag lets Claude execute commands
 ## Features
 
 - **Sandboxed execution**: Claude can only access mounted directories
-- **Protected host directories**: `~/.claude`, `~/.gradle`, and `~/.m2` use overlay filesystems - Claude can write to them but cannot delete your host files
+- **Protected cache directories**: `~/.gradle` and `~/.m2` use overlay filesystems - Claude can write to them but cannot delete your host files
 - **Shared config**: Uses your host's `~/.claude` directory, so plugins and MCP servers work seamlessly
 - **Auto-updates**: Claude Code updates to the latest version on each container start
 - **Multiple repos**: Mount as many source directories as needed
@@ -84,9 +84,11 @@ While this sandbox isolates Claude from most of your system:
 
 **What IS protected** (unless you use `--no-overlay`):
 
-- **`~/.claude`, `~/.gradle`, `~/.m2`** use overlay filesystems. Claude can read existing files and write new ones, but deletions only affect an ephemeral layer - your host directories remain intact. On container restart, any "deleted" files reappear.
+- **`~/.gradle`, `~/.m2`** use overlay filesystems. Claude can read existing files and write new ones, but deletions only affect an ephemeral layer - your host directories remain intact. On container restart, any "deleted" files reappear.
 
-Use `--no-overlay` if you want changes to these directories (like downloaded Maven dependencies) to persist to your host. This trades protection for convenience.
+**Note:** `~/.claude` is NOT overlay-protected because it stores conversation history needed for `--continue` and `--resume` to work.
+
+Use `--no-overlay` if you want changes to cache directories (like downloaded Maven dependencies) to persist to your host. This trades protection for convenience.
 
 For maximum security, only mount the specific directories you need.
 ## Git worktrees
@@ -114,8 +116,8 @@ curl -fsSL https://raw.githubusercontent.com/MattFlower/dangerous-claude/main/in
 ## How It Works
 
 1. **Volume Mounts**: Each directory you specify is mounted at `/workspace/<dirname>`
-2. **Overlay Protection**: `~/.claude`, `~/.gradle`, and `~/.m2` are mounted read-only, with an overlay filesystem providing a writable layer. This protects your host files from deletion while allowing Claude to use these directories normally.
-3. **Shared Config**: Uses your `~/.claude` directory so authentication, plugins, and MCP servers work
+2. **Overlay Protection**: `~/.gradle` and `~/.m2` are mounted read-only with an overlay filesystem providing a writable layer. This protects your host cache files from deletion.
+3. **Shared Config**: Uses your `~/.claude` directory directly (read-write) so conversation history, authentication, and plugins persist
 4. **Git Integration**: Mounts `~/.gitconfig` (read-only) so commits appear as you
 5. **Auto-Update**: Runs `npm update` on each start to keep Claude Code current
 

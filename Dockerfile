@@ -49,11 +49,11 @@ RUN mkdir -p /etc/apt/keyrings \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user for better security practices
-# Note: Do NOT create /home/claude/.claude here - it will be set up via overlay at runtime
+# Note: Do NOT create /home/claude/.claude here - it will be symlinked at runtime
 RUN useradd -m -s /bin/bash claude && \
     mkdir -p /home/claude/.npm-global && \
     mkdir -p /workspace && \
-    mkdir -p /mnt/claude-lower && \
+    mkdir -p /mnt/claude-data && \
     mkdir -p /mnt/gradle-lower && \
     mkdir -p /mnt/m2-lower && \
     chown -R claude:claude /home/claude /workspace

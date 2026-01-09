@@ -477,14 +477,9 @@ sync_keychain_credentials
 # Build volume mounts
 VOLUME_ARGS=()
 
-# Mount Claude state directory
-# With overlay (default): mount read-only, overlay provides write layer
-# Without overlay: mount directly for read-write access
-if [ "$DISABLE_OVERLAY" = true ]; then
-  VOLUME_ARGS+=("-v" "$CLAUDE_STATE_DIR:/mnt/claude-data")
-else
-  VOLUME_ARGS+=("-v" "$CLAUDE_STATE_DIR:/mnt/claude-lower:ro")
-fi
+# Mount Claude state directory (always direct - needed for conversation persistence)
+# Unlike ~/.gradle and ~/.m2, ~/.claude must persist for --continue and --resume to work
+VOLUME_ARGS+=("-v" "$CLAUDE_STATE_DIR:/mnt/claude-data")
 
 # Mount ~/.claude.json to a staging location (read-only)
 # The entrypoint will copy it to the actual location, so each container

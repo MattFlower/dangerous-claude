@@ -89,23 +89,20 @@ if [ "$DOCKER_ENABLED" = "true" ] && [ -S "/var/run/docker.sock" ]; then
     fi
 fi
 
-# Set up directory access based on overlay mode
+# Set up ~/.claude symlink (always direct mount - needed for conversation persistence)
+if [ -d "/mnt/claude-data" ] && [ ! -L "$CLAUDE_HOME/.claude" ]; then
+    rm -rf "$CLAUDE_HOME/.claude" 2>/dev/null || true
+    ln -sf /mnt/claude-data "$CLAUDE_HOME/.claude"
+    echo "Symlinked: $CLAUDE_HOME/.claude -> /mnt/claude-data"
+fi
+
+# Set up ~/.gradle and ~/.m2 based on overlay mode
 if [ "$DISABLE_OVERLAY" = "true" ]; then
-    # No overlay: use symlinks for directories mounted directly
-    echo "Overlay protection disabled, using direct mounts..."
-
-    # ~/.claude is mounted at /mnt/claude-data - symlink to expected location
-    if [ -d "/mnt/claude-data" ] && [ ! -L "$CLAUDE_HOME/.claude" ]; then
-        rm -rf "$CLAUDE_HOME/.claude" 2>/dev/null || true
-        ln -sf /mnt/claude-data "$CLAUDE_HOME/.claude"
-        echo "  Symlinked: $CLAUDE_HOME/.claude -> /mnt/claude-data"
-    fi
-
-    # ~/.gradle and ~/.m2 are mounted directly to their final locations
-    # No action needed
+    # No overlay: directories are mounted directly to their final locations
+    echo "Overlay protection disabled for .gradle and .m2"
 else
-    # Set up overlay filesystems for protected directories
-    # This allows Claude to write to these directories without modifying the host
+    # Set up overlay filesystems for cache directories
+    # This protects host directories from deletion while allowing writes
     setup_overlay() {
         local name="$1"
         local lower="$2"
@@ -139,8 +136,7 @@ else
         fi
     }
 
-    # Set up overlays for protected directories (while still root)
-    setup_overlay "claude" "/mnt/claude-lower" "/home/claude/.claude"
+    # Set up overlays for cache directories (while still root)
     setup_overlay "gradle" "/mnt/gradle-lower" "/home/claude/.gradle"
     setup_overlay "m2" "/mnt/m2-lower" "/home/claude/.m2"
 fi
