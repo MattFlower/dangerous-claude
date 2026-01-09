@@ -59,6 +59,32 @@ else
     fi
 fi
 
+# Configure Docker socket access if enabled
+if [ "$DOCKER_ENABLED" = "true" ] && [ -S "/var/run/docker.sock" ]; then
+    DOCKER_SOCK_GID=$(stat -c "%g" /var/run/docker.sock)
+    echo "Configuring Docker access (socket GID: $DOCKER_SOCK_GID)..."
+
+    # Check if a group with this GID already exists
+    EXISTING_GROUP=$(getent group "$DOCKER_SOCK_GID" | cut -d: -f1 || true)
+
+    if [ -n "$EXISTING_GROUP" ]; then
+        # Use existing group
+        echo "Using existing group '$EXISTING_GROUP' for Docker access..."
+        usermod -aG "$EXISTING_GROUP" "$CLAUDE_USER"
+    else
+        # Create or modify docker group to use the socket's GID
+        echo "Creating docker group with GID $DOCKER_SOCK_GID..."
+        if getent group docker > /dev/null 2>&1; then
+            # Group name exists with different GID, modify it
+            groupmod -g "$DOCKER_SOCK_GID" docker
+        else
+            # Group name doesn't exist, create it
+            groupadd -g "$DOCKER_SOCK_GID" docker
+        fi
+        usermod -aG docker "$CLAUDE_USER"
+    fi
+fi
+
 # Now drop privileges and run the rest as the claude user
 exec gosu "$CLAUDE_USER" /bin/bash -c '
 set -e

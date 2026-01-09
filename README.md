@@ -77,6 +77,7 @@ While this sandbox isolates Claude from most of your system:
 - **Mounted directories** are fully accessible (read/write).  Claude could potentially delete any or all of these directories, potentially causing the loss of any local branches.  If you wanted to be extra safe, clone a separate copy of any repository you are feeding to dangerous claude!
 - **Network access** is available (for npm, API calls, etc.)  If you provide environment variables that allow dangerous-claude to modify remote resources, it definitely could!
 - **~/.claude config** is shared with the host.  Assume that you could lose your ~/.claude or ~/.claude.json file could be deleted.
+- **Docker access** (with `--docker` flag) gives Claude control over your host's Docker daemon. Claude could delete containers, images, or volumes. It could also start new containers with arbitrary configurations—potentially mounting sensitive host directories or running malicious code. Only use `--docker` when you actually need Docker functionality.
 
 For maximum security, only mount the specific directories you need.  
 

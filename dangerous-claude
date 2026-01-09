@@ -12,6 +12,7 @@
 #   --init              Pull image (or build if customized)
 #   --shell             Start a bash shell instead of Claude
 #   --login             Run 'claude login' for Claude Max authentication
+#   --docker            Enable Docker access inside the container
 #   --help, -h          Show this help message
 #
 # Authentication:
@@ -47,9 +48,10 @@ FORCE_BUILD=false
 INIT_IMAGE=false
 START_SHELL=false
 RUN_LOGIN=false
+ENABLE_DOCKER=false
 
 show_help() {
-  sed -n '2,25p' "$0" | sed 's/^#//' | sed 's/^ //'
+  sed -n '2,26p' "$0" | sed 's/^#//' | sed 's/^ //'
   exit 0
 }
 
@@ -77,6 +79,10 @@ while [[ $# -gt 0 ]]; do
     ;;
   --login | login)
     RUN_LOGIN=true
+    shift
+    ;;
+  --docker)
+    ENABLE_DOCKER=true
     shift
     ;;
   --help | -h | help)
@@ -395,6 +401,47 @@ if [ -d "$HOME/.m2" ]; then
   VOLUME_ARGS+=("-v" "$HOME/.m2:/home/claude/.m2")
 fi
 
+# Mount Docker socket if --docker flag is enabled
+if [ "$ENABLE_DOCKER" = true ]; then
+  # Check common Docker socket locations
+  # Use a function to properly check sockets (including symlinks)
+  check_docker_socket() {
+    local sock="$1"
+    # Check if path exists (file, socket, or symlink)
+    if [ ! -e "$sock" ] && [ ! -L "$sock" ]; then
+      return 1
+    fi
+    # For symlinks, resolve to actual path and verify it's a socket
+    if [ -L "$sock" ]; then
+      local resolved
+      resolved=$(readlink -f "$sock" 2>/dev/null) || return 1
+      [ -S "$resolved" ] && return 0
+      return 1
+    fi
+    # Direct socket check
+    [ -S "$sock" ] && return 0
+    return 1
+  }
+
+  DOCKER_SOCK=""
+  if check_docker_socket "/var/run/docker.sock"; then
+    DOCKER_SOCK="/var/run/docker.sock"
+  elif check_docker_socket "$HOME/.rd/docker.sock"; then
+    # Rancher Desktop: mount socket directly (entrypoint.sh creates symlink inside container)
+    echo "Docker: Found Rancher Desktop socket at ~/.rd/docker.sock"
+    DOCKER_SOCK="$HOME/.rd/docker.sock"
+  fi
+
+  if [ -n "$DOCKER_SOCK" ]; then
+    VOLUME_ARGS+=("-v" "$DOCKER_SOCK:/var/run/docker.sock")
+    echo "Docker: Mounting $DOCKER_SOCK for container access"
+  else
+    echo "Warning: Docker socket not found"
+    echo "  Checked: /var/run/docker.sock, ~/.rd/docker.sock"
+    echo "  Make sure Docker is running on the host"
+  fi
+fi
+
 # Function to check if a directory is a git worktree
 is_git_worktree() {
   local dir="$1"
@@ -480,6 +527,11 @@ fi
 
 if [ -n "$RESUME_ID" ]; then
   ENV_ARGS+=("-e" "CLAUDE_RESUME=$RESUME_ID")
+fi
+
+# Pass Docker enabled flag to entrypoint for group permission setup
+if [ "$ENABLE_DOCKER" = true ]; then
+  ENV_ARGS+=("-e" "DOCKER_ENABLED=true")
 fi
 
 # Pass workspace directory order to entrypoint (colon-separated)
