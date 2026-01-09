@@ -130,9 +130,21 @@ else
             # Fix ownership for claude user
             chown -R "$CLAUDE_USER:$CLAUDE_USER" "$upper" "$target"
         else
-            echo "  WARNING: Failed to mount overlay for $name, falling back to symlink"
-            rm -rf "$target"
-            ln -sf "$lower" "$target"
+            echo ""
+            echo "ERROR: Failed to mount overlay for $name"
+            echo ""
+            echo "Overlay filesystems require CAP_SYS_ADMIN capability."
+            echo "This can fail if:"
+            echo "  - Docker is running in rootless mode"
+            echo "  - The container runtime doesn't support overlays"
+            echo "  - Security policies prevent overlay mounts"
+            echo ""
+            echo "To fix this, use the --no-overlay flag:"
+            echo "  dangerous-claude --no-overlay [directories...]"
+            echo ""
+            echo "This will mount ~/.gradle and ~/.m2 directly (read-write)"
+            echo "instead of using overlay protection."
+            exit 1
         fi
     }
 
