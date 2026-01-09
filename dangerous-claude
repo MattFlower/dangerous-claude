@@ -382,25 +382,40 @@ run_upgrade() {
         exit 1
       fi
       echo ""
+
+      # Now pull on main
+      echo "Pulling latest changes..."
+      if ! git -C "$SCRIPT_DIR" pull; then
+        echo "Error: Failed to pull latest changes"
+        exit 1
+      fi
+
+      echo ""
+
+      # Re-run with --init to pull or build the image as appropriate
+      # Use exec to replace this process with the updated script
+      exec "$SCRIPT_DIR/dangerous-claude" --init
     else
       echo "Staying on '$current_branch' branch."
+      echo "Skipping git pull to avoid affecting your branch."
       echo "Note: You may not receive the latest updates."
       echo ""
+      exit 0
     fi
+  else
+    # Already on main, safe to pull
+    echo "Pulling latest changes..."
+    if ! git -C "$SCRIPT_DIR" pull; then
+      echo "Error: Failed to pull latest changes"
+      exit 1
+    fi
+
+    echo ""
+
+    # Re-run with --init to pull or build the image as appropriate
+    # Use exec to replace this process with the updated script
+    exec "$SCRIPT_DIR/dangerous-claude" --init
   fi
-
-  # Pull latest changes from git
-  echo "Pulling latest changes..."
-  if ! git -C "$SCRIPT_DIR" pull; then
-    echo "Error: Failed to pull latest changes"
-    exit 1
-  fi
-
-  echo ""
-
-  # Re-run with --init to pull or build the image as appropriate
-  # Use exec to replace this process with the updated script
-  exec "$SCRIPT_DIR/dangerous-claude" --init
 }
 
 # Build locally

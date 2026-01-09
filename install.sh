@@ -28,7 +28,71 @@ echo ""
 # Clone or update
 if [ -d "$INSTALL_DIR" ]; then
   echo "Updating existing installation..."
-  cd "$INSTALL_DIR" && git pull
+  cd "$INSTALL_DIR"
+
+  # Check current branch (same safety checks as --upgrade)
+  current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+
+  if [ "$current_branch" != "main" ]; then
+    echo ""
+    echo "Warning: You are on branch '$current_branch', not 'main'."
+    echo ""
+
+    # Check if working directory is dirty
+    is_dirty=false
+    if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+      is_dirty=true
+    fi
+
+    if [ "$is_dirty" = true ]; then
+      echo "Your working directory has uncommitted changes."
+      echo ""
+    fi
+
+    # Ask user what to do
+    echo "Would you like to switch to the main branch to get the latest updates?"
+    if [ "$is_dirty" = true ]; then
+      echo "(Your uncommitted changes will be stashed and can be restored later)"
+    fi
+    echo ""
+    printf "Switch to main branch? [y/N] "
+    read -r REPLY
+
+    if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ]; then
+      # Stash changes if dirty
+      if [ "$is_dirty" = true ]; then
+        echo "Stashing uncommitted changes..."
+        if ! git stash push -m "dangerous-claude upgrade: auto-stash from $current_branch"; then
+          echo "Error: Failed to stash changes"
+          exit 1
+        fi
+        echo "Changes stashed. Use 'git -C $INSTALL_DIR stash pop' to restore them later."
+        echo ""
+      fi
+
+      # Switch to main
+      echo "Switching to main branch..."
+      if ! git checkout main; then
+        echo "Error: Failed to switch to main branch"
+        exit 1
+      fi
+      echo ""
+
+      # Now pull on main
+      echo "Pulling latest changes..."
+      git pull
+    else
+      echo "Staying on '$current_branch' branch."
+      echo "Skipping git pull to avoid affecting your branch."
+      echo "Note: You may not receive the latest updates."
+      echo ""
+      # Skip pull entirely - user chose to stay on their branch
+    fi
+  else
+    # Already on main, safe to pull
+    echo "Pulling latest changes..."
+    git pull
+  fi
 else
   echo "Cloning repository..."
   git clone "$REPO_URL" "$INSTALL_DIR"
