@@ -427,16 +427,9 @@ if [ "$ENABLE_DOCKER" = true ]; then
   if check_docker_socket "/var/run/docker.sock"; then
     DOCKER_SOCK="/var/run/docker.sock"
   elif check_docker_socket "$HOME/.rd/docker.sock"; then
-    # Rancher Desktop: socket exists at ~/.rd/docker.sock but Docker can't mount it directly
-    # Create a symlink at /var/run/docker.sock instead
+    # Rancher Desktop: mount socket directly (entrypoint.sh creates symlink inside container)
     echo "Docker: Found Rancher Desktop socket at ~/.rd/docker.sock"
-    echo "Docker: Creating symlink at /var/run/docker.sock (requires sudo)..."
-    if sudo ln -sf "$HOME/.rd/docker.sock" /var/run/docker.sock; then
-      DOCKER_SOCK="/var/run/docker.sock"
-    else
-      echo "Warning: Failed to create symlink. Docker access will not work."
-      echo "  You can manually run: sudo ln -sf ~/.rd/docker.sock /var/run/docker.sock"
-    fi
+    DOCKER_SOCK="$HOME/.rd/docker.sock"
   fi
 
   if [ -n "$DOCKER_SOCK" ]; then

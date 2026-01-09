@@ -72,9 +72,15 @@ if [ "$DOCKER_ENABLED" = "true" ] && [ -S "/var/run/docker.sock" ]; then
         echo "Using existing group '$EXISTING_GROUP' for Docker access..."
         usermod -aG "$EXISTING_GROUP" "$CLAUDE_USER"
     else
-        # Create docker group with the socket's GID
+        # Create or modify docker group to use the socket's GID
         echo "Creating docker group with GID $DOCKER_SOCK_GID..."
-        groupadd -g "$DOCKER_SOCK_GID" docker
+        if getent group docker > /dev/null 2>&1; then
+            # Group name exists with different GID, modify it
+            groupmod -g "$DOCKER_SOCK_GID" docker
+        else
+            # Group name doesn't exist, create it
+            groupadd -g "$DOCKER_SOCK_GID" docker
+        fi
         usermod -aG docker "$CLAUDE_USER"
     fi
 fi
