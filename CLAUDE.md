@@ -23,10 +23,10 @@ dangerous-claude (CLI)
     ├── Syncs: macOS Keychain OAuth credentials → ~/.claude/.credentials.json
     │
     ├── Mounts: source dirs → /workspace/*
-    │           ~/.claude → /mnt/claude-data
+    │           ~/.claude → /mnt/claude-lower (read-only)
     │           ~/.gitconfig (read-only)
-    │           ~/.gradle (for Gradle projects)
-    │           ~/.m2 (for Maven projects)
+    │           ~/.gradle → /mnt/gradle-lower (read-only)
+    │           ~/.m2 → /mnt/m2-lower (read-only)
     │           /var/run/docker.sock (with --docker flag)
     │
     └── Passes: ANTHROPIC_API_KEY + env vars listed in env.txt
@@ -43,8 +43,10 @@ Dockerfile
 
 entrypoint.sh
     │
-    ├── Symlinks /mnt/claude-data → ~/.claude
+    ├── Adjusts UID/GID to match host
+    ├── Sets up overlay filesystems (protecting host dirs)
     ├── Configures Docker socket permissions (if enabled)
+    ├── Drops privileges to claude user
     ├── Updates Claude Code to latest
     └── Runs claude --dangerously-skip-permissions
 ```
@@ -134,6 +136,38 @@ Edit `env.txt` to list environment variable names to pass into the container (on
 - Host git config mounted read-only
 - Network access allowed (for API calls and package downloads)
 - `--dangerously-skip-permissions` only applies inside the sandbox
+
+### Overlay Filesystem Protection
+
+Host directories (`~/.claude`, `~/.gradle`, `~/.m2`) are protected from deletion using overlay filesystems:
+
+```
+Host Directory (read-only)     Container View (read-write)
+─────────────────────────      ────────────────────────────
+~/.m2 ──────────────────►      /mnt/m2-lower (lower layer)
+                                        │
+                               overlayfs merge
+                                        │
+                                        ▼
+                               /home/claude/.m2 (merged view)
+                                        ▲
+                                        │
+                               /tmp/overlay/m2/upper (writes go here)
+```
+
+**How it works:**
+- Host directories are mounted read-only as the "lower" layer
+- An ephemeral "upper" layer captures all writes
+- Claude sees a merged view that appears fully writable
+- Deletions only affect the upper layer; host files are untouched
+- On container restart, changes are discarded and original files restored
+
+**Security implementation:**
+- `CAP_SYS_ADMIN` is granted to the container (required for overlay mounting)
+- Overlays are set up as root during entrypoint initialization
+- Privileges are dropped to the `claude` user before Claude Code runs
+- `--security-opt no-new-privileges` prevents privilege re-escalation
+- The `claude` user cannot access `CAP_SYS_ADMIN` after the privilege drop
 
 ## Docker Access (--docker flag)
 

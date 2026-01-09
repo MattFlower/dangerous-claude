@@ -10,6 +10,9 @@ CLAUDE_HOME="/home/claude"
 if [ -d "/mnt/claude-data" ]; then
     HOST_UID=$(stat -c "%u" /mnt/claude-data)
     HOST_GID=$(stat -c "%g" /mnt/claude-data)
+elif [ -d "/mnt/claude-lower" ]; then
+    HOST_UID=$(stat -c "%u" /mnt/claude-lower)
+    HOST_GID=$(stat -c "%g" /mnt/claude-lower)
 else
     # Fallback to current claude user's IDs
     HOST_UID=$(id -u $CLAUDE_USER)
@@ -85,6 +88,46 @@ if [ "$DOCKER_ENABLED" = "true" ] && [ -S "/var/run/docker.sock" ]; then
     fi
 fi
 
+# Set up overlay filesystems for protected directories
+# This allows Claude to write to these directories without modifying the host
+setup_overlay() {
+    local name="$1"
+    local lower="$2"
+    local target="$3"
+
+    # Skip if lower directory doesn't exist (not mounted)
+    if [ ! -d "$lower" ]; then
+        return 0
+    fi
+
+    local overlay_base="/tmp/overlay/$name"
+    local upper="$overlay_base/upper"
+    local work="$overlay_base/work"
+
+    echo "Setting up overlay for $name..."
+
+    # Create overlay directories
+    mkdir -p "$upper" "$work" "$target"
+
+    # Mount the overlay
+    if mount -t overlay overlay \
+        -o "lowerdir=$lower,upperdir=$upper,workdir=$work" \
+        "$target"; then
+        echo "  Overlay mounted: $target"
+        # Fix ownership for claude user
+        chown -R "$CLAUDE_USER:$CLAUDE_USER" "$upper" "$target"
+    else
+        echo "  WARNING: Failed to mount overlay for $name, falling back to symlink"
+        rm -rf "$target"
+        ln -sf "$lower" "$target"
+    fi
+}
+
+# Set up overlays for protected directories (while still root)
+setup_overlay "claude" "/mnt/claude-lower" "/home/claude/.claude"
+setup_overlay "gradle" "/mnt/gradle-lower" "/home/claude/.gradle"
+setup_overlay "m2" "/mnt/m2-lower" "/home/claude/.m2"
+
 # Now drop privileges and run the rest as the claude user
 exec gosu "$CLAUDE_USER" /bin/bash -c '
 set -e
@@ -95,12 +138,8 @@ export PATH="$HOME/.npm-global/bin:$PATH"
 # Source SDKMAN for Java access
 source "$HOME/.sdkman/bin/sdkman-init.sh"
 
-# Set up Claude config symlink (like Docker official sandbox does)
-# This ensures credentials from the mounted volume are properly accessible
-if [ -d "/mnt/claude-data" ] && [ ! -L "$HOME/.claude" ]; then
-    rm -rf "$HOME/.claude" 2>/dev/null || true
-    ln -sf /mnt/claude-data "$HOME/.claude"
-fi
+# Note: ~/.claude is now set up via overlay mount in the root section above
+# This provides write access while protecting the host directory from deletion
 
 # Copy ~/.claude.json from staging location if present
 # Each container gets its own copy to avoid conflicts when running multiple instances

@@ -472,8 +472,8 @@ sync_keychain_credentials
 # Build volume mounts
 VOLUME_ARGS=()
 
-# Mount Claude state for conversation persistence (symlinked to ~/.claude at runtime)
-VOLUME_ARGS+=("-v" "$CLAUDE_STATE_DIR:/mnt/claude-data")
+# Mount Claude state read-only (overlay will provide write layer)
+VOLUME_ARGS+=("-v" "$CLAUDE_STATE_DIR:/mnt/claude-lower:ro")
 
 # Mount ~/.claude.json to a staging location (read-only)
 # The entrypoint will copy it to the actual location, so each container
@@ -488,14 +488,14 @@ if [ -f "$HOME/.gitconfig" ]; then
   VOLUME_ARGS+=("-v" "$HOME/.gitconfig:/home/claude/.gitconfig:ro")
 fi
 
-# Mount Gradle directory for shared caches and configs
+# Mount Gradle directory read-only (overlay will provide write layer)
 if [ -d "$HOME/.gradle" ]; then
-  VOLUME_ARGS+=("-v" "$HOME/.gradle:/home/claude/.gradle")
+  VOLUME_ARGS+=("-v" "$HOME/.gradle:/mnt/gradle-lower:ro")
 fi
 
-# Mount Maven directory for shared caches and configs
+# Mount Maven directory read-only (overlay will provide write layer)
 if [ -d "$HOME/.m2" ]; then
-  VOLUME_ARGS+=("-v" "$HOME/.m2:/home/claude/.m2")
+  VOLUME_ARGS+=("-v" "$HOME/.m2:/mnt/m2-lower:ro")
 fi
 
 # Mount Docker socket if --docker flag is enabled
@@ -647,10 +647,14 @@ else
 fi
 
 # Run the container
+# CAP_SYS_ADMIN is needed to set up overlay filesystems in entrypoint.sh
+# no-new-privileges prevents privilege escalation after we drop to claude user
 exec docker run \
   --rm \
   -it \
   --name "$CONTAINER_NAME" \
+  --cap-add=SYS_ADMIN \
+  --security-opt no-new-privileges \
   "${VOLUME_ARGS[@]}" \
   "${ENV_ARGS[@]}" \
   "$IMAGE_NAME" \
