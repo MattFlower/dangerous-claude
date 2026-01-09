@@ -10,6 +10,7 @@
 #   --resume, -r ID     Resume a specific conversation by ID
 #   --build             Force rebuild the Docker image locally
 #   --init              Pull image (or build if customized)
+#   --upgrade           Update dangerous-claude to the latest version
 #   --shell             Start a bash shell instead of Claude
 #   --login             Run 'claude login' for Claude Max authentication
 #   --docker            Enable Docker access inside the container
@@ -46,12 +47,13 @@ CONTINUE_FLAG=""
 RESUME_ID=""
 FORCE_BUILD=false
 INIT_IMAGE=false
+RUN_UPGRADE=false
 START_SHELL=false
 RUN_LOGIN=false
 ENABLE_DOCKER=false
 
 show_help() {
-  sed -n '2,26p' "$0" | sed 's/^#//' | sed 's/^ //'
+  sed -n '2,27p' "$0" | sed 's/^#//' | sed 's/^ //'
   exit 0
 }
 
@@ -71,6 +73,10 @@ while [[ $# -gt 0 ]]; do
     ;;
   --init)
     INIT_IMAGE=true
+    shift
+    ;;
+  --upgrade | upgrade)
+    RUN_UPGRADE=true
     shift
     ;;
   --shell | shell)
@@ -324,6 +330,79 @@ is_customized() {
   return 1
 }
 
+# Upgrade dangerous-claude to the latest version
+run_upgrade() {
+  echo "Upgrading dangerous-claude..."
+  echo ""
+
+  # Check current branch
+  local current_branch
+  current_branch=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)
+
+  if [ "$current_branch" != "main" ]; then
+    echo "Warning: You are on branch '$current_branch', not 'main'."
+    echo ""
+
+    # Check if working directory is dirty
+    local is_dirty=false
+    if ! git -C "$SCRIPT_DIR" diff --quiet 2>/dev/null || ! git -C "$SCRIPT_DIR" diff --cached --quiet 2>/dev/null; then
+      is_dirty=true
+    fi
+
+    if [ "$is_dirty" = true ]; then
+      echo "Your working directory has uncommitted changes."
+      echo ""
+    fi
+
+    # Ask user what to do
+    echo "Would you like to switch to the main branch to get the latest updates?"
+    if [ "$is_dirty" = true ]; then
+      echo "(Your uncommitted changes will be stashed and can be restored later)"
+    fi
+    echo ""
+    read -p "Switch to main branch? [y/N] " -n 1 -r
+    echo ""
+
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      # Stash changes if dirty
+      if [ "$is_dirty" = true ]; then
+        echo "Stashing uncommitted changes..."
+        if ! git -C "$SCRIPT_DIR" stash push -m "dangerous-claude upgrade: auto-stash from $current_branch"; then
+          echo "Error: Failed to stash changes"
+          exit 1
+        fi
+        echo "Changes stashed. Use 'git -C $SCRIPT_DIR stash pop' to restore them later."
+        echo ""
+      fi
+
+      # Switch to main
+      echo "Switching to main branch..."
+      if ! git -C "$SCRIPT_DIR" checkout main; then
+        echo "Error: Failed to switch to main branch"
+        exit 1
+      fi
+      echo ""
+    else
+      echo "Staying on '$current_branch' branch."
+      echo "Note: You may not receive the latest updates."
+      echo ""
+    fi
+  fi
+
+  # Pull latest changes from git
+  echo "Pulling latest changes..."
+  if ! git -C "$SCRIPT_DIR" pull; then
+    echo "Error: Failed to pull latest changes"
+    exit 1
+  fi
+
+  echo ""
+
+  # Re-run with --init to pull or build the image as appropriate
+  # Use exec to replace this process with the updated script
+  exec "$SCRIPT_DIR/dangerous-claude" --init
+}
+
 # Build locally
 build_image() {
   echo "Building Docker image..."
@@ -349,6 +428,9 @@ if [ "$FORCE_BUILD" = true ]; then
   build_image
   echo "Docker image built successfully."
   exit 0
+elif [ "$RUN_UPGRADE" = true ]; then
+  run_upgrade
+  # run_upgrade uses exec, so this line is never reached
 elif [ "$INIT_IMAGE" = true ]; then
   # Smart pull-or-build: pull unless customized
   if is_customized; then

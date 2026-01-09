@@ -65,6 +65,7 @@ dangerous-claude --resume abc123 ./repo
 ```bash
 dangerous-claude --build    # Force rebuild the Docker image locally
 dangerous-claude --init     # Pull image (or build if customized)
+dangerous-claude --upgrade  # Update to the latest version
 dangerous-claude --shell    # Start a bash shell (for debugging)
 dangerous-claude --version  # Show version
 dangerous-claude --help     # Show help
@@ -92,10 +93,12 @@ An alternate workflow would be to do your commits outside of dangerous-claude.  
 ## Updating
 
 ```bash
-cd ~/.dangerous-claude && git pull && ./dangerous-claude --build
+dangerous-claude --upgrade
 ```
 
-Or re-run the installer:
+This pulls the latest code and rebuilds the Docker image if needed.
+
+Alternatively, you can re-run the installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/MattFlower/dangerous-claude/main/install.sh | bash
