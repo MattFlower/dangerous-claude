@@ -64,12 +64,14 @@ dangerous-claude --resume abc123 ./repo
 ### Other Commands
 
 ```bash
-dangerous-claude --build    # Force rebuild the Docker image locally
-dangerous-claude --init     # Pull image (or build if customized)
-dangerous-claude --upgrade  # Update to the latest version
-dangerous-claude --shell    # Start a bash shell (for debugging)
-dangerous-claude --version  # Show version
-dangerous-claude --help     # Show help
+dangerous-claude --build       # Force rebuild the Docker image locally
+dangerous-claude --init        # Pull image (or build if customized)
+dangerous-claude --upgrade     # Update to the latest version
+dangerous-claude --shell       # Start a bash shell (for debugging)
+dangerous-claude --no-overlay  # Disable overlay protection (writes persist to host)
+dangerous-claude --version     # Show version
+dangerous-claude --help        # Show help
+dangerous-claude --help        # Show help
 ```
 
 ## dangerous-claude isn't perfect -- know what it doesn't protect
@@ -80,12 +82,13 @@ While this sandbox isolates Claude from most of your system:
 - **Network access** is available (for npm, API calls, etc.) If you provide environment variables that allow dangerous-claude to modify remote resources, it definitely could!
 - **Docker access** (with `--docker` flag) gives Claude control over your host's Docker daemon. Claude could delete containers, images, or volumes. It could also start new containers with arbitrary configurations—potentially mounting sensitive host directories or running malicious code. Only use `--docker` when you actually need Docker functionality.
 
-**What IS protected:**
+**What IS protected** (unless you use `--no-overlay`):
 
 - **`~/.claude`, `~/.gradle`, `~/.m2`** use overlay filesystems. Claude can read existing files and write new ones, but deletions only affect an ephemeral layer - your host directories remain intact. On container restart, any "deleted" files reappear.
 
-For maximum security, only mount the specific directories you need.
+Use `--no-overlay` if you want changes to these directories (like downloaded Maven dependencies) to persist to your host. This trades protection for convenience.
 
+For maximum security, only mount the specific directories you need.
 ## Git worktrees
 
 I like and use git worktrees pretty liberally as I'm working on projects at work.  Committing, pulling, pushing, or using logs requires access to the "main" directory that has the repository.  Things like committing requires that directory to be read-write.

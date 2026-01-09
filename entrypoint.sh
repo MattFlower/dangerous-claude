@@ -6,7 +6,8 @@ set -e
 CLAUDE_USER="claude"
 CLAUDE_HOME="/home/claude"
 
-# Get the UID/GID of the mounted claude-data directory
+# Get the UID/GID of the mounted claude directory
+# Check both possible mount points depending on overlay mode
 if [ -d "/mnt/claude-data" ]; then
     HOST_UID=$(stat -c "%u" /mnt/claude-data)
     HOST_GID=$(stat -c "%g" /mnt/claude-data)
@@ -88,45 +89,61 @@ if [ "$DOCKER_ENABLED" = "true" ] && [ -S "/var/run/docker.sock" ]; then
     fi
 fi
 
-# Set up overlay filesystems for protected directories
-# This allows Claude to write to these directories without modifying the host
-setup_overlay() {
-    local name="$1"
-    local lower="$2"
-    local target="$3"
+# Set up directory access based on overlay mode
+if [ "$DISABLE_OVERLAY" = "true" ]; then
+    # No overlay: use symlinks for directories mounted directly
+    echo "Overlay protection disabled, using direct mounts..."
 
-    # Skip if lower directory doesn't exist (not mounted)
-    if [ ! -d "$lower" ]; then
-        return 0
+    # ~/.claude is mounted at /mnt/claude-data - symlink to expected location
+    if [ -d "/mnt/claude-data" ] && [ ! -L "$CLAUDE_HOME/.claude" ]; then
+        rm -rf "$CLAUDE_HOME/.claude" 2>/dev/null || true
+        ln -sf /mnt/claude-data "$CLAUDE_HOME/.claude"
+        echo "  Symlinked: $CLAUDE_HOME/.claude -> /mnt/claude-data"
     fi
 
-    local overlay_base="/tmp/overlay/$name"
-    local upper="$overlay_base/upper"
-    local work="$overlay_base/work"
+    # ~/.gradle and ~/.m2 are mounted directly to their final locations
+    # No action needed
+else
+    # Set up overlay filesystems for protected directories
+    # This allows Claude to write to these directories without modifying the host
+    setup_overlay() {
+        local name="$1"
+        local lower="$2"
+        local target="$3"
 
-    echo "Setting up overlay for $name..."
+        # Skip if lower directory doesn't exist (not mounted)
+        if [ ! -d "$lower" ]; then
+            return 0
+        fi
 
-    # Create overlay directories
-    mkdir -p "$upper" "$work" "$target"
+        local overlay_base="/tmp/overlay/$name"
+        local upper="$overlay_base/upper"
+        local work="$overlay_base/work"
 
-    # Mount the overlay
-    if mount -t overlay overlay \
-        -o "lowerdir=$lower,upperdir=$upper,workdir=$work" \
-        "$target"; then
-        echo "  Overlay mounted: $target"
-        # Fix ownership for claude user
-        chown -R "$CLAUDE_USER:$CLAUDE_USER" "$upper" "$target"
-    else
-        echo "  WARNING: Failed to mount overlay for $name, falling back to symlink"
-        rm -rf "$target"
-        ln -sf "$lower" "$target"
-    fi
-}
+        echo "Setting up overlay for $name..."
 
-# Set up overlays for protected directories (while still root)
-setup_overlay "claude" "/mnt/claude-lower" "/home/claude/.claude"
-setup_overlay "gradle" "/mnt/gradle-lower" "/home/claude/.gradle"
-setup_overlay "m2" "/mnt/m2-lower" "/home/claude/.m2"
+        # Create overlay directories
+        mkdir -p "$upper" "$work" "$target"
+
+        # Mount the overlay
+        if mount -t overlay overlay \
+            -o "lowerdir=$lower,upperdir=$upper,workdir=$work" \
+            "$target"; then
+            echo "  Overlay mounted: $target"
+            # Fix ownership for claude user
+            chown -R "$CLAUDE_USER:$CLAUDE_USER" "$upper" "$target"
+        else
+            echo "  WARNING: Failed to mount overlay for $name, falling back to symlink"
+            rm -rf "$target"
+            ln -sf "$lower" "$target"
+        fi
+    }
+
+    # Set up overlays for protected directories (while still root)
+    setup_overlay "claude" "/mnt/claude-lower" "/home/claude/.claude"
+    setup_overlay "gradle" "/mnt/gradle-lower" "/home/claude/.gradle"
+    setup_overlay "m2" "/mnt/m2-lower" "/home/claude/.m2"
+fi
 
 # Now drop privileges and run the rest as the claude user
 exec gosu "$CLAUDE_USER" /bin/bash -c '
@@ -138,8 +155,7 @@ export PATH="$HOME/.npm-global/bin:$PATH"
 # Source SDKMAN for Java access
 source "$HOME/.sdkman/bin/sdkman-init.sh"
 
-# Note: ~/.claude is now set up via overlay mount in the root section above
-# This provides write access while protecting the host directory from deletion
+# Note: ~/.claude is set up in the root section above (overlay or symlink depending on mode)
 
 # Copy ~/.claude.json from staging location if present
 # Each container gets its own copy to avoid conflicts when running multiple instances

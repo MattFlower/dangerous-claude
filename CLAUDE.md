@@ -100,7 +100,9 @@ dangerous-claude --login
 
 # Enable Docker access inside the container
 dangerous-claude --docker ./repo
-```
+
+# Disable overlay protection (writes persist to host)
+dangerous-claude --no-overlay ./repo
 
 ## Customizing Installed Packages
 
@@ -169,6 +171,9 @@ Host Directory (read-only)     Container View (read-write)
 - `--security-opt no-new-privileges` prevents privilege re-escalation
 - The `claude` user cannot access `CAP_SYS_ADMIN` after the privilege drop
 
+**Disabling overlay protection:**
+Use `--no-overlay` to mount directories directly (read-write) instead of using overlays. This allows changes like downloaded dependencies to persist to the host, but removes deletion protection. When disabled, `CAP_SYS_ADMIN` is not granted to the container.
+
 ## Docker Access (--docker flag)
 
 The `--docker` flag enables Docker commands inside the container by mounting the host's Docker socket. This allows Claude to build images, run containers, and use docker-compose.
@@ -187,6 +192,7 @@ The `--docker` flag enables Docker commands inside the container by mounting the
 ```bash
 dangerous-claude --docker ./my-project
 ```
+Use `--no-overlay` to mount directories directly (read-write) instead of using overlays. This allows changes like downloaded dependencies to persist to the host, but removes deletion protection. When disabled, `CAP_SYS_ADMIN` is not granted to the container.
 
 ## macOS Keychain Credential Sync
 
