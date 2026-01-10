@@ -6,10 +6,14 @@ set -e
 CLAUDE_USER="claude"
 CLAUDE_HOME="/home/claude"
 
-# Get the UID/GID of the mounted claude-data directory
+# Get the UID/GID of the mounted claude directory
+# Check both possible mount points depending on overlay mode
 if [ -d "/mnt/claude-data" ]; then
     HOST_UID=$(stat -c "%u" /mnt/claude-data)
     HOST_GID=$(stat -c "%g" /mnt/claude-data)
+elif [ -d "/mnt/claude-lower" ]; then
+    HOST_UID=$(stat -c "%u" /mnt/claude-lower)
+    HOST_GID=$(stat -c "%g" /mnt/claude-lower)
 else
     # Fallback to current claude user's IDs
     HOST_UID=$(id -u $CLAUDE_USER)
@@ -85,6 +89,70 @@ if [ "$DOCKER_ENABLED" = "true" ] && [ -S "/var/run/docker.sock" ]; then
     fi
 fi
 
+# Set up ~/.claude symlink (always direct mount - needed for conversation persistence)
+if [ -d "/mnt/claude-data" ] && [ ! -L "$CLAUDE_HOME/.claude" ]; then
+    rm -rf "$CLAUDE_HOME/.claude" 2>/dev/null || true
+    ln -sf /mnt/claude-data "$CLAUDE_HOME/.claude"
+    echo "Symlinked: $CLAUDE_HOME/.claude -> /mnt/claude-data"
+fi
+
+# Set up ~/.gradle and ~/.m2 based on overlay mode
+if [ "$DISABLE_OVERLAY" = "true" ]; then
+    # No overlay: directories are mounted directly to their final locations
+    echo "Overlay protection disabled for .gradle and .m2"
+else
+    # Set up overlay filesystems for cache directories
+    # This protects host directories from deletion while allowing writes
+    setup_overlay() {
+        local name="$1"
+        local lower="$2"
+        local target="$3"
+
+        # Skip if lower directory doesn't exist (not mounted)
+        if [ ! -d "$lower" ]; then
+            return 0
+        fi
+
+        local overlay_base="/tmp/overlay/$name"
+        local upper="$overlay_base/upper"
+        local work="$overlay_base/work"
+
+        echo "Setting up overlay for $name..."
+
+        # Create overlay directories
+        mkdir -p "$upper" "$work" "$target"
+
+        # Mount the overlay
+        if mount -t overlay overlay \
+            -o "lowerdir=$lower,upperdir=$upper,workdir=$work" \
+            "$target"; then
+            echo "  Overlay mounted: $target"
+            # Fix ownership for claude user
+            chown -R "$CLAUDE_USER:$CLAUDE_USER" "$upper" "$target"
+        else
+            echo ""
+            echo "ERROR: Failed to mount overlay for $name"
+            echo ""
+            echo "Overlay filesystems require CAP_SYS_ADMIN capability."
+            echo "This can fail if:"
+            echo "  - Docker is running in rootless mode"
+            echo "  - The container runtime doesn't support overlays"
+            echo "  - Security policies prevent overlay mounts"
+            echo ""
+            echo "To fix this, use the --no-overlay flag:"
+            echo "  dangerous-claude --no-overlay [directories...]"
+            echo ""
+            echo "This will mount ~/.gradle and ~/.m2 directly (read-write)"
+            echo "instead of using overlay protection."
+            exit 1
+        fi
+    }
+
+    # Set up overlays for cache directories (while still root)
+    setup_overlay "gradle" "/mnt/gradle-lower" "/home/claude/.gradle"
+    setup_overlay "m2" "/mnt/m2-lower" "/home/claude/.m2"
+fi
+
 # Now drop privileges and run the rest as the claude user
 exec gosu "$CLAUDE_USER" /bin/bash -c '
 set -e
@@ -95,12 +163,7 @@ export PATH="$HOME/.npm-global/bin:$PATH"
 # Source SDKMAN for Java access
 source "$HOME/.sdkman/bin/sdkman-init.sh"
 
-# Set up Claude config symlink (like Docker official sandbox does)
-# This ensures credentials from the mounted volume are properly accessible
-if [ -d "/mnt/claude-data" ] && [ ! -L "$HOME/.claude" ]; then
-    rm -rf "$HOME/.claude" 2>/dev/null || true
-    ln -sf /mnt/claude-data "$HOME/.claude"
-fi
+# Note: ~/.claude is set up in the root section above (overlay or symlink depending on mode)
 
 # Copy ~/.claude.json from staging location if present
 # Each container gets its own copy to avoid conflicts when running multiple instances

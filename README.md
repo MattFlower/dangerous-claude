@@ -13,6 +13,7 @@ Claude Code's `--dangerously-skip-permissions` flag lets Claude execute commands
 ## Features
 
 - **Sandboxed execution**: Claude can only access mounted directories
+- **Protected cache directories**: `~/.gradle` and `~/.m2` use overlay filesystems - Claude can write to them but cannot delete your host files
 - **Shared config**: Uses your host's `~/.claude` directory, so plugins and MCP servers work seamlessly
 - **Auto-updates**: Claude Code updates to the latest version on each container start
 - **Multiple repos**: Mount as many source directories as needed
@@ -63,28 +64,36 @@ dangerous-claude --resume abc123 ./repo
 ### Other Commands
 
 ```bash
-dangerous-claude --build    # Force rebuild the Docker image locally
-dangerous-claude --init     # Pull image (or build if customized)
-dangerous-claude --upgrade  # Update to the latest version
-dangerous-claude --shell    # Start a bash shell (for debugging)
-dangerous-claude --version  # Show version
-dangerous-claude --help     # Show help
+dangerous-claude --build       # Force rebuild the Docker image locally
+dangerous-claude --init        # Pull image (or build if customized)
+dangerous-claude --upgrade     # Update to the latest version
+dangerous-claude --shell       # Start a bash shell (for debugging)
+dangerous-claude --no-overlay  # Disable overlay protection (writes persist to host)
+dangerous-claude --version     # Show version
+dangerous-claude --help        # Show help
+dangerous-claude --help        # Show help
 ```
 
 ## dangerous-claude isn't perfect -- know what it doesn't protect
 
 While this sandbox isolates Claude from most of your system:
 
-- **Mounted directories** are fully accessible (read/write).  Claude could potentially delete any or all of these directories, potentially causing the loss of any local branches.  If you wanted to be extra safe, clone a separate copy of any repository you are feeding to dangerous claude!
-- **Network access** is available (for npm, API calls, etc.)  If you provide environment variables that allow dangerous-claude to modify remote resources, it definitely could!
-- **~/.claude config** is shared with the host.  Assume that you could lose your ~/.claude or ~/.claude.json file could be deleted.
+- **Mounted project directories** are fully accessible (read/write). Claude could potentially delete any or all of these directories, potentially causing the loss of any local branches. If you wanted to be extra safe, clone a separate copy of any repository you are feeding to dangerous-claude!
+- **Network access** is available (for npm, API calls, etc.) If you provide environment variables that allow dangerous-claude to modify remote resources, it definitely could!
 - **Docker access** (with `--docker` flag) gives Claude control over your host's Docker daemon. Claude could delete containers, images, or volumes. It could also start new containers with arbitrary configurations—potentially mounting sensitive host directories or running malicious code. Only use `--docker` when you actually need Docker functionality.
 
-For maximum security, only mount the specific directories you need.  
+**What IS protected** (unless you use `--no-overlay`):
 
+- **`~/.gradle`, `~/.m2`** use overlay filesystems. Claude can read existing files and write new ones, but deletions only affect an ephemeral layer - your host directories remain intact. On container restart, any "deleted" files reappear.
+
+**Note:** `~/.claude` is NOT overlay-protected because it stores conversation history needed for `--continue` and `--resume` to work.
+
+Use `--no-overlay` if you want changes to cache directories (like downloaded Maven dependencies) to persist to your host. This trades protection for convenience.
+
+For maximum security, only mount the specific directories you need.
 ## Git worktrees
 
-I like and use git worktrees pretty liberally as I'm working on projects at work.  Committing, pulling, pushing, or using logs requires access to the "main" directory that has the repository.  Things like committing requires that directory to be read-write.  
+I like and use git worktrees pretty liberally as I'm working on projects at work.  Committing, pulling, pushing, or using logs requires access to the "main" directory that has the repository.  Things like committing requires that directory to be read-write.
 
 Consequently, if you are going to use git worktrees with Claude, you have to mount your main directory too!  This can be dangerous if you have multiple active branches.  Consequently, by default dangerous-claude will warn you if you try to do it.
 
@@ -107,9 +116,10 @@ curl -fsSL https://raw.githubusercontent.com/MattFlower/dangerous-claude/main/in
 ## How It Works
 
 1. **Volume Mounts**: Each directory you specify is mounted at `/workspace/<dirname>`
-2. **Shared Config**: Mounts your `~/.claude` and `~/.claude.json` so authentication, plugins, and MCP servers work
-3. **Git Integration**: Mounts `~/.gitconfig` so commits appear as you
-4. **Auto-Update**: Runs `npm update` on each start to keep Claude Code current
+2. **Overlay Protection**: `~/.gradle` and `~/.m2` are mounted read-only with an overlay filesystem providing a writable layer. This protects your host cache files from deletion.
+3. **Shared Config**: Uses your `~/.claude` directory directly (read-write) so conversation history, authentication, and plugins persist
+4. **Git Integration**: Mounts `~/.gitconfig` (read-only) so commits appear as you
+5. **Auto-Update**: Runs `npm update` on each start to keep Claude Code current
 
 ## Configuration
 

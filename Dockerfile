@@ -54,7 +54,9 @@ RUN useradd -m -s /bin/bash claude && \
     mkdir -p /home/claude/.npm-global && \
     mkdir -p /workspace && \
     mkdir -p /mnt/claude-data && \
-    chown -R claude:claude /home/claude /workspace /mnt/claude-data
+    mkdir -p /mnt/gradle-lower && \
+    mkdir -p /mnt/m2-lower && \
+    chown -R claude:claude /home/claude /workspace
 
 # Switch to claude user
 USER claude

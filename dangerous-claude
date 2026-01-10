@@ -14,6 +14,7 @@
 #   --shell             Start a bash shell instead of Claude
 #   --login             Run 'claude login' for Claude Max authentication
 #   --docker            Enable Docker access inside the container
+#   --no-overlay        Disable overlay protection (allows writes to persist to host)
 #   --help, -h          Show this help message
 #
 # Authentication:
@@ -51,7 +52,7 @@ RUN_UPGRADE=false
 START_SHELL=false
 RUN_LOGIN=false
 ENABLE_DOCKER=false
-
+DISABLE_OVERLAY=false
 show_help() {
   sed -n '2,27p' "$0" | sed 's/^#//' | sed 's/^ //'
   exit 0
@@ -89,6 +90,10 @@ while [[ $# -gt 0 ]]; do
     ;;
   --docker)
     ENABLE_DOCKER=true
+    shift
+    ;;
+  --no-overlay)
+    DISABLE_OVERLAY=true
     shift
     ;;
   --help | -h | help)
@@ -472,7 +477,8 @@ sync_keychain_credentials
 # Build volume mounts
 VOLUME_ARGS=()
 
-# Mount Claude state for conversation persistence (symlinked to ~/.claude at runtime)
+# Mount Claude state directory (always direct - needed for conversation persistence)
+# Unlike ~/.gradle and ~/.m2, ~/.claude must persist for --continue and --resume to work
 VOLUME_ARGS+=("-v" "$CLAUDE_STATE_DIR:/mnt/claude-data")
 
 # Mount ~/.claude.json to a staging location (read-only)
@@ -488,14 +494,22 @@ if [ -f "$HOME/.gitconfig" ]; then
   VOLUME_ARGS+=("-v" "$HOME/.gitconfig:/home/claude/.gitconfig:ro")
 fi
 
-# Mount Gradle directory for shared caches and configs
+# Mount Gradle directory
 if [ -d "$HOME/.gradle" ]; then
-  VOLUME_ARGS+=("-v" "$HOME/.gradle:/home/claude/.gradle")
+  if [ "$DISABLE_OVERLAY" = true ]; then
+    VOLUME_ARGS+=("-v" "$HOME/.gradle:/home/claude/.gradle")
+  else
+    VOLUME_ARGS+=("-v" "$HOME/.gradle:/mnt/gradle-lower:ro")
+  fi
 fi
 
-# Mount Maven directory for shared caches and configs
+# Mount Maven directory
 if [ -d "$HOME/.m2" ]; then
-  VOLUME_ARGS+=("-v" "$HOME/.m2:/home/claude/.m2")
+  if [ "$DISABLE_OVERLAY" = true ]; then
+    VOLUME_ARGS+=("-v" "$HOME/.m2:/home/claude/.m2")
+  else
+    VOLUME_ARGS+=("-v" "$HOME/.m2:/mnt/m2-lower:ro")
+  fi
 fi
 
 # Mount Docker socket if --docker flag is enabled
@@ -637,6 +651,11 @@ if [ ${#WORKSPACE_ORDER[@]} -gt 0 ]; then
   ENV_ARGS+=("-e" "WORKSPACE_ORDER=$WORKSPACE_ORDER_STR")
 fi
 
+# Pass overlay disable flag to entrypoint
+if [ "$DISABLE_OVERLAY" = true ]; then
+  ENV_ARGS+=("-e" "DISABLE_OVERLAY=true")
+fi
+
 # Determine the command to run
 if [ "$RUN_LOGIN" = true ]; then
   DOCKER_CMD="claude login"
@@ -646,11 +665,21 @@ else
   DOCKER_CMD=""
 fi
 
+# Build security options
+# CAP_SYS_ADMIN is only needed when using overlay filesystems
+# no-new-privileges prevents privilege escalation after we drop to claude user
+SECURITY_ARGS=()
+if [ "$DISABLE_OVERLAY" != true ]; then
+  SECURITY_ARGS+=("--cap-add=SYS_ADMIN")
+fi
+SECURITY_ARGS+=("--security-opt" "no-new-privileges")
+
 # Run the container
 exec docker run \
   --rm \
   -it \
   --name "$CONTAINER_NAME" \
+  "${SECURITY_ARGS[@]}" \
   "${VOLUME_ARGS[@]}" \
   "${ENV_ARGS[@]}" \
   "$IMAGE_NAME" \
