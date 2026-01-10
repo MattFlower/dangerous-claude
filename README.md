@@ -80,7 +80,25 @@ While this sandbox isolates Claude from most of your system:
 - **~/.claude config** is shared with the host.  Assume that you could lose your ~/.claude or ~/.claude.json file could be deleted.
 - **Docker access** (with `--docker` flag) gives Claude control over your host's Docker daemon. Claude could delete containers, images, or volumes. It could also start new containers with arbitrary configurations—potentially mounting sensitive host directories or running malicious code. Only use `--docker` when you actually need Docker functionality.
 
-For maximum security, only mount the specific directories you need.  
+For maximum security, only mount the specific directories you need.
+
+## Known Limitations
+
+### Chrome Browser Control (--chrome) Not Supported
+
+Claude Code has a "Claude in Chrome" feature that allows it to control your Chrome browser. This feature is **not supported** in dangerous-claude due to architectural constraints:
+
+1. **Native Messaging Architecture**: Claude Code communicates with Chrome via a Unix socket (`/tmp/claude-mcp-browser-bridge-{user}`). This socket is created by Chrome's native messaging host on the host machine.
+
+2. **Docker VM Boundary**: On macOS, Docker runs containers in a Linux VM. Unix sockets cannot communicate across this hypervisor boundary—the socket appears in the container but is non-functional.
+
+3. **Linux Limitation**: Even on Linux where socket mounting works, the username in the socket path differs between host and container, requiring additional complexity.
+
+4. **Upstream Issues**: Claude Code's Chrome integration has known stability issues (30-second timeout due to Chrome's service worker lifecycle).
+
+**Workaround**: If you need Chrome browser control, run Claude Code natively on your host machine (outside of dangerous-claude) for that specific use case.
+
+**Alternative**: Consider using MCP servers for browser automation (like Puppeteer-based servers) which use different communication mechanisms that may work better in containerized environments.
 
 ## Git worktrees
 
